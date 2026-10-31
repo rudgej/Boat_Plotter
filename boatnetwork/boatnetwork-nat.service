@@ -1,0 +1,11 @@
+[Unit]
+Description=BoatNetwork NAT masquerade
+After=boatnetwork.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/boatnetwork-nat.sh
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,279 @@
+{
+  "appConfig": {
+    "configVersion": 12,
+    "autoNightMode": false,
+    "redNightMode": false,
+    "nightModeBrightness": 0.27,
+    "isRemoteControl": false,
+    "instanceName": "",
+    "dataSets": [],
+    "unitDefaults": {
+      "Unitless": "unitless",
+      "Speed": "knots",
+      "Flow": "l/h",
+      "Temperature": "celsius",
+      "Length": "m",
+      "Volume": "liter",
+      "Current": "A",
+      "Potential": "V",
+      "Charge": "C",
+      "Power": "W",
+      "Energy": "J",
+      "Pressure": "bar",
+      "Fuel Distance": "nm/l",
+      "Energy Distance": "nm/kWh",
+      "Density": "kg/m3",
+      "Time": "Hours",
+      "Angular Velocity": "deg/min",
+      "Angle": "deg",
+      "Frequency": "Hz",
+      "Ratio": "ratio",
+      "Resistance": "ohm"
+    },
+    "notificationConfig": {
+      "disableNotifications": false,
+      "menuGrouping": true,
+      "security": { "disableSecurity": true },
+      "devices": { "disableDevices": false, "showNormalState": false, "showNominalState": false },
+      "sound": { "disableSound": false, "muteNormal": true, "muteNominal": true, "muteWarn": false, "muteAlert": false, "muteAlarm": false, "muteEmergency": false }
+    },
+    "splitShellEnabled": false,
+    "splitShellSide": "left",
+    "splitShellWidth": 0.7,
+    "splitShellSwipeDisabled": false,
+    "widgetHistoryDisabled": false
+  },
+  "connectionConfig": {
+    "configVersion": 12,
+    "kipUUID": "6801496a-b975-464f-b891-98ae88280c16",
+    "signalKUrl": "http://localhost:3000",
+    "proxyEnabled": false,
+    "signalKSubscribeAll": false,
+    "useDeviceToken": false,
+    "loginName": "",
+    "loginPassword": "",
+    "useSharedConfig": false,
+    "sharedConfigName": "default"
+  },
+  "themeConfig": {
+    "theme": "dark"
+  },
+  "dashboardsConfig": [
+    {
+      "id": "dbfc23af-91ae-441d-9c2d-ebfc25e52e99",
+      "name": "Engine",
+      "icon": "dashboard-dashboard",
+      "collapseSplitShell": false,
+      "configuration": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 4,
+          "h": 6,
+          "minW": 1,
+          "minH": 2,
+          "id": "a6048f06-96d5-48f1-bbf1-59dd1c5b447e",
+          "selector": "widget-host2",
+          "input": {
+            "widgetProperties": {
+              "type": "widget-gauge-ng-radial",
+              "uuid": "a6048f06-96d5-48f1-bbf1-59dd1c5b447e",
+              "config": {
+                "supportAutomaticHistoricalSeries": true,
+                "displayName": "RPM",
+                "filterSelfPaths": true,
+                "paths": {
+                  "gaugePath": {
+                    "description": "Numeric Data",
+                    "path": "self.propulsion.port.revolutions",
+                    "source": "default",
+                    "pathType": "number",
+                    "suppressBootstrapNull": true,
+                    "isPathConfigurable": true,
+                    "showPathSkUnitsFilter": true,
+                    "pathSkUnitsFilter": null,
+                    "convertUnitTo": "rpm",
+                    "sampleTime": 500
+                  }
+                },
+                "displayScale": { "lower": 0, "upper": 6000, "type": "linear" },
+                "gauge": {
+                  "type": "ngRadial",
+                  "subType": "measuring",
+                  "highlightsWidth": 5,
+                  "scaleStart": 180,
+                  "barStartPosition": "left",
+                  "enableTicks": true,
+                  "enableProgressbar": true,
+                  "enableNeedle": true
+                },
+                "numInt": 1,
+                "numDecimal": 0,
+                "enableTimeout": false,
+                "color": "contrast",
+                "dataTimeout": 5,
+                "ignoreZones": false
+              }
+            }
+          }
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "w": 4,
+          "h": 6,
+          "minW": 1,
+          "minH": 2,
+          "id": "b1111111-0000-4000-8000-000000000001",
+          "selector": "widget-host2",
+          "input": {
+            "widgetProperties": {
+              "type": "widget-gauge-ng-radial",
+              "uuid": "b1111111-0000-4000-8000-000000000001",
+              "config": {
+                "supportAutomaticHistoricalSeries": true,
+                "displayName": "Oil Pressure",
+                "filterSelfPaths": true,
+                "paths": {
+                  "gaugePath": {
+                    "description": "Numeric Data",
+                    "path": "self.propulsion.port.oilPressure",
+                    "source": "default",
+                    "pathType": "number",
+                    "suppressBootstrapNull": true,
+                    "isPathConfigurable": true,
+                    "showPathSkUnitsFilter": true,
+                    "pathSkUnitsFilter": null,
+                    "convertUnitTo": "bar",
+                    "sampleTime": 500
+                  }
+                },
+                "displayScale": { "lower": 0, "upper": 10, "type": "linear" },
+                "gauge": {
+                  "type": "ngRadial",
+                  "subType": "measuring",
+                  "highlightsWidth": 5,
+                  "scaleStart": 180,
+                  "barStartPosition": "left",
+                  "enableTicks": true,
+                  "enableProgressbar": true,
+                  "enableNeedle": true
+                },
+                "numInt": 1,
+                "numDecimal": 0,
+                "enableTimeout": false,
+                "color": "contrast",
+                "dataTimeout": 5,
+                "ignoreZones": false
+              }
+            }
+          }
+        },
+        {
+          "x": 0,
+          "y": 6,
+          "w": 4,
+          "h": 6,
+          "minW": 1,
+          "minH": 2,
+          "id": "b2222222-0000-4000-8000-000000000002",
+          "selector": "widget-host2",
+          "input": {
+            "widgetProperties": {
+              "type": "widget-gauge-ng-radial",
+              "uuid": "b2222222-0000-4000-8000-000000000002",
+              "config": {
+                "supportAutomaticHistoricalSeries": true,
+                "displayName": "Coolant",
+                "filterSelfPaths": true,
+                "paths": {
+                  "gaugePath": {
+                    "description": "Numeric Data",
+                    "path": "self.propulsion.port.temperature",
+                    "source": "default",
+                    "pathType": "number",
+                    "suppressBootstrapNull": true,
+                    "isPathConfigurable": true,
+                    "showPathSkUnitsFilter": true,
+                    "pathSkUnitsFilter": null,
+                    "convertUnitTo": "celsius",
+                    "sampleTime": 500
+                  }
+                },
+                "displayScale": { "lower": 0, "upper": 120, "type": "linear" },
+                "gauge": {
+                  "type": "ngRadial",
+                  "subType": "measuring",
+                  "highlightsWidth": 5,
+                  "scaleStart": 180,
+                  "barStartPosition": "left",
+                  "enableTicks": true,
+                  "enableProgressbar": true,
+                  "enableNeedle": true
+                },
+                "numInt": 1,
+                "numDecimal": 0,
+                "enableTimeout": false,
+                "color": "contrast",
+                "dataTimeout": 5,
+                "ignoreZones": false
+              }
+            }
+          }
+        },
+        {
+          "x": 4,
+          "y": 6,
+          "w": 4,
+          "h": 6,
+          "minW": 1,
+          "minH": 2,
+          "id": "b3333333-0000-4000-8000-000000000003",
+          "selector": "widget-host2",
+          "input": {
+            "widgetProperties": {
+              "type": "widget-gauge-ng-radial",
+              "uuid": "b3333333-0000-4000-8000-000000000003",
+              "config": {
+                "supportAutomaticHistoricalSeries": true,
+                "displayName": "Oil Temp",
+                "filterSelfPaths": true,
+                "paths": {
+                  "gaugePath": {
+                    "description": "Numeric Data",
+                    "path": "self.propulsion.port.oilTemperature",
+                    "source": "default",
+                    "pathType": "number",
+                    "suppressBootstrapNull": true,
+                    "isPathConfigurable": true,
+                    "showPathSkUnitsFilter": true,
+                    "pathSkUnitsFilter": null,
+                    "convertUnitTo": "celsius",
+                    "sampleTime": 500
+                  }
+                },
+                "displayScale": { "lower": 0, "upper": 150, "type": "linear" },
+                "gauge": {
+                  "type": "ngRadial",
+                  "subType": "measuring",
+                  "highlightsWidth": 5,
+                  "scaleStart": 180,
+                  "barStartPosition": "left",
+                  "enableTicks": true,
+                  "enableProgressbar": true,
+                  "enableNeedle": true
+                },
+                "numInt": 1,
+                "numDecimal": 0,
+                "enableTimeout": false,
+                "color": "contrast",
+                "dataTimeout": 5,
+                "ignoreZones": false
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

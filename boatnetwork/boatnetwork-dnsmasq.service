@@ -1,0 +1,12 @@
+[Unit]
+Description=BoatNetwork DHCP/DNS
+After=boatnetwork.service
+Requires=boatnetwork.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/dnsmasq -k -C /etc/boatnetwork-dnsmasq.conf
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
