@@ -1,0 +1,16 @@
+[Unit]
+Description=Connect boat hifi over Bluetooth
+After=bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=pi
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/local/bin/bt-hifi-connect.sh
+Restart=on-failure
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target

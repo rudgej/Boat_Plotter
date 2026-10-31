@@ -1,0 +1,10 @@
+[Unit]
+Description=Disable NVMe volatile write cache (power-cut safety)
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nvme set-feature -f 0x06 -V 0 /dev/nvme0
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+[Unit]
+Description=Memory watchdog sample
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/memwatch.sh
