@@ -148,6 +148,25 @@ frequency `rpm`.
 
 ---
 
+## Wind (apparent → true) & Signal K plugins
+
+The wind sensor (ESP32-S3) measures **apparent** wind and now sends
+`$WIMWV,<dir>,R` (relative) over UDP. Signal K stores it as
+`environment.wind.speedApparent` / `angleApparent`.
+
+- `signalk-derived-data` (enabled) computes **true** wind
+  (`speedTrue`/`directionTrue`) from apparent wind + SOG + heading.
+- `signalk-anchoralarm-plugin` (enabled) — anchor watch; needs only GPS.
+- `signalk-to-nmea2000` (enabled, `WINDv2`) sends **PGN 130306 apparent wind**
+  onto `can0` so the Garmin plotter sees it and computes its own true wind.
+- OpenCPN was found auto-starting again after a reboot — re-disabled with
+  `systemctl disable --now opencpn-headless opencpn-xvfb opencpn-hdmi`.
+
+Firmware (apparent-wind `$WIMWV` + 30 s BoatNetwork auto-retry) lives in the
+`Wind-Sensor` repo, branch `Wind-Waveshare`.
+
+---
+
 ## Other fixes & diagnostics
 
 - **NVMe corruption** (power cuts losing writes): disabled the drive's volatile
@@ -162,10 +181,12 @@ frequency `rpm`.
 - **Memory watchdog**: `memwatch.timer` samples `free`, **kernel slab
   (`Slab`/`SUnreclaim`)**, and top processes every 5 min to
   `/var/log/memwatch.log`.
-- **Overnight freeze (Oct 30 & Oct 31)**: system hard-freezes after several
-  hours. Not a userspace leak (memory plateaus ~5 GB) and no OOM-kill/panic —
-  likely a kernel-level hang; suspect under investigation. OpenCPN (both
-  instances) disabled to cut ~780 MB constant load.
+- **Hard freeze (Oct 30, Oct 31, Nov 1)**: system hard-freezes after hours.
+  Not a userspace leak — the Nov 1 freeze had 4.2 GB free; slab leaks slowly
+  (~7 MB/h) but is nowhere near exhausting 8 GB, and there is no
+  OOM-kill/panic/hung-task in the journal. Kernel-level hang; the AIC8800 dongle
+  driver remains the prime suspect. OpenCPN was re-enabled by a reboot and has
+  been re-disabled (cuts ~780 MB constant load).
 - **`fake-gps.service`** was disabled (fixed position feed to AvNav, outranked
   Signal K).
 
