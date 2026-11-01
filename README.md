@@ -159,6 +159,10 @@ The wind sensor (ESP32-S3) measures **apparent** wind and now sends
 - `signalk-anchoralarm-plugin` (enabled) — anchor watch; needs only GPS.
 - `signalk-to-nmea2000` (enabled, `WINDv2`) sends **PGN 130306 apparent wind**
   onto `can0` so the Garmin plotter sees it and computes its own true wind.
+- `fuel-economy` (custom plugin in `signalk-plugins/fuel-economy/`, enabled)
+  publishes rolling-30 s litres-per-nautical-mile to
+  `propulsion.main.fuel.economy` = (port+starboard fuel rate, L/h) ÷ SOG (kn).
+  Suppressed below ~1 kn. Point a KIP numeric/gauge widget at that path.
 - OpenCPN was found auto-starting again after a reboot — re-disabled with
   `systemctl disable --now opencpn-headless opencpn-xvfb opencpn-hdmi`.
 

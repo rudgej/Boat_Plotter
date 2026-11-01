@@ -1,0 +1,7 @@
+{
+  "name": "signalk-fuel-economy",
+  "version": "0.1.0",
+  "description": "Rolling 30 s litres-per-nautical-mile from (port+starboard) fuel rate and SOG",
+  "main": "index.js",
+  "keywords": ["signalk-node-server-plugin", "signalk-category-utility"]
+}
