@@ -108,33 +108,29 @@ restart
 
 ---
 
-## 5. Boat configuration (final)
+## 5. Seakeeper preset (applied 2026-11-01)
 
-First-time Wi-Fi setup was already done at home (board joined BoatNetwork and
-was verified from the Pi — see §6):
+The bridge is now pre-configured for ChatGPT's assumed Seakeeper IP (`172.16.102.1`):
 
-```
-set_sta BoatNetwork B0ssywifi
-set_sta_static 192.168.10.50 255.255.255.0 192.168.10.1
-set_hostname seakeeper-bridge
-restart
-```
+- Wi-Fi uplink: BoatNetwork, static `192.168.10.50`.
+- Ethernet downlink: `172.16.102.254/24`, DHCP + NAT on (pool `172.16.102.1-100`).
+- Admin UI moved to port 8080 → `http://192.168.10.50:8080/`.
+- Port forward: `192.168.10.50:80 -> 172.16.102.1:80`.
 
-On the boat, with the Seakeeper plugged into the RJ45 socket and its real IP
-confirmed (assumed `172.16.102.1` from ChatGPT but **unverified** — check with a
-laptop on the boat):
+The Pi's Seakeeper button (`http://192.168.10.50/`) therefore forwards to the
+Seakeeper web UI.
 
-```
-web_ui port 8080        # move the ESP32's own admin page off port 80
-
-# if the Seakeeper is 172.16.102.1, put the ESP32's Ethernet side on that subnet:
-set_ap_ip 172.16.102.254
-portmap add TCP 80 172.16.102.1 80
-restart
-```
-
-The ESP32 admin UI then lives at `http://192.168.10.50:8080/`, and port 80
-forwards to the Seakeeper web UI.
+**On the boat:**
+1. Power the ESP32, plug the Seakeeper's Ethernet into its RJ45 socket.
+2. Confirm the Seakeeper's real IP. If it is a DHCP client it will get a lease in
+   `172.16.102.1-100` (very likely `.1`, matching the preset). If it is a
+   different static IP, change one number via the serial console or the admin
+   UI at `http://192.168.10.50:8080/`:
+   ```
+   portmap add TCP 80 <seakeeper-ip> 80
+   restart
+   ```
+3. Tap the dock's Seakeeper button.
 
 If the Seakeeper turns out to be a **DHCP client**, skip `set_ap_ip` (leave the
 default `192.168.4.1/24`; the Seakeeper gets `192.168.4.2`) and use:
@@ -160,9 +156,13 @@ Either way the Pi reaches it at **`http://192.168.10.50/`** (the Pi's
 - End-to-end NAT path verified: a laptop on the Ethernet side (`192.168.4.x`)
   loaded `http://192.168.4.1` and pinged the Pi at `192.168.10.1` (~8 ms) —
   Mac → ESP32 (Ethernet) → NAT → BoatNetwork → Pi works.
+- Seakeeper preset applied (§5): Ethernet moved to `172.16.102.254`, admin UI on
+  `:8080`, port 80 forwarded to `172.16.102.1`. Verified: `http://192.168.10.50/`
+  now times out (forward target absent), `http://192.168.10.50:8080/` serves the
+  admin UI.
 
 Still to verify on the boat: the Seakeeper's real IP (static `172.16.102.1` vs
-DHCP) and the port forward (§5).
+DHCP).
 
 ## Recovery
 
