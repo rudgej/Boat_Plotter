@@ -37,6 +37,7 @@ Feed the Pi directly (proper 5V/5A supply or a rated 12V→5V buck).
 | `diagnostics/` | Memory watchdog, persistent-journal notes, CDP test scripts |
 | `logo/` | Fairline splash/logo assets and generators |
 | `misc/` | OpenCPN chart helpers and old panel config |
+| `seakeeper-esp/` | WT32-ETH01 Ethernet→BoatNetwork bridge: prebuilt firmware, `flash.sh`, wiring/setup guide |
 | `pi-config/` | **Live snapshot** of the Pi's `/etc`, `/usr/local/bin`, etc. |
 
 ---
