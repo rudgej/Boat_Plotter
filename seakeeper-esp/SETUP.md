@@ -157,6 +157,9 @@ Either way the Pi reaches it at **`http://192.168.10.50/`** (the Pi's
   `http://192.168.10.50/` (title `ESP32 Ethernet Router`).
 - Ethernet downlink up: `192.168.4.1` with DHCP + NAT enabled, mDNS
   `seakeeper-bridge.local`.
+- End-to-end NAT path verified: a laptop on the Ethernet side (`192.168.4.x`)
+  loaded `http://192.168.4.1` and pinged the Pi at `192.168.10.1` (~8 ms) —
+  Mac → ESP32 (Ethernet) → NAT → BoatNetwork → Pi works.
 
 Still to verify on the boat: the Seakeeper's real IP (static `172.16.102.1` vs
 DHCP) and the port forward (§5).
