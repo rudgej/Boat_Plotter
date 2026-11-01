@@ -71,7 +71,7 @@ Each dock button runs a launcher in `/usr/local/bin/`:
 
 | Button | Launcher | App | Port/URL |
 |--------|----------|-----|----------|
-| Plotter | `launch-plotter.sh` | OpenCPN | `DISPLAY :0`, configdir `~/.opencpn` |
+| Plotter | `launch-plotter.sh` | OpenCPN *(disabled — AvNav is the primary plotter)* | `DISPLAY :0`, configdir `~/.opencpn` |
 | Signal K | `launch-signalk.sh` | Signal K web UI | `localhost:3000` |
 | Grafana | `launch-grafana.sh` | Grafana | `localhost:3001` |
 | AvNav | `launch-avnav.sh` | AvNav | `localhost:8080` |
@@ -158,8 +158,13 @@ frequency `rpm`.
   `/tmp/OCPN_PIPEY` instead of the AvNav-used `/tmp/OCPN_PIPEX`.
 - **Persistent journal**: RPi OS ships `Storage=volatile`; shadowed with
   `/etc/systemd/journald.conf.d/40-rpi-volatile-storage.conf` → `Storage=persistent`.
-- **Memory watchdog**: `memwatch.timer` samples `free` + top processes every
-  5 min to `/var/log/memwatch.log` (to catch an overnight leak).
+- **Memory watchdog**: `memwatch.timer` samples `free`, **kernel slab
+  (`Slab`/`SUnreclaim`)**, and top processes every 5 min to
+  `/var/log/memwatch.log`.
+- **Overnight freeze (Oct 30 & Oct 31)**: system hard-freezes after several
+  hours. Not a userspace leak (memory plateaus ~5 GB) and no OOM-kill/panic —
+  likely a kernel-level hang; suspect under investigation. OpenCPN (both
+  instances) disabled to cut ~780 MB constant load.
 - **`fake-gps.service`** was disabled (fixed position feed to AvNav, outranked
   Signal K).
 
