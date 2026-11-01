@@ -58,9 +58,6 @@ int main (int argc, char **argv)
     gtk_container_add (GTK_CONTAINER (win), box);
 
     gtk_box_pack_start (GTK_BOX (box),
-        make_button ("opencpn", "Plotter", "/usr/local/bin/launch-plotter.sh"),
-        FALSE, FALSE, 0);
-    gtk_box_pack_start (GTK_BOX (box),
         make_button ("web-browser", "Signal K", "/usr/local/bin/launch-signalk.sh"),
         FALSE, FALSE, 0);
     gtk_box_pack_start (GTK_BOX (box),
