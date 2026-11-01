@@ -110,7 +110,8 @@ restart
 
 ## 5. Boat configuration (final)
 
-Set these once, from the serial console (or the web UI on the Ethernet side):
+First-time Wi-Fi setup was already done at home (board joined BoatNetwork and
+was verified from the Pi — see §6):
 
 ```
 set_sta BoatNetwork B0ssywifi
@@ -119,16 +120,21 @@ set_hostname seakeeper-bridge
 restart
 ```
 
-Then, with the Seakeeper plugged into the RJ45 socket and its real IP confirmed
-(assumed `172.16.102.1` from ChatGPT but **unverified** — check with a laptop on
-the boat):
+On the boat, with the Seakeeper plugged into the RJ45 socket and its real IP
+confirmed (assumed `172.16.102.1` from ChatGPT but **unverified** — check with a
+laptop on the boat):
 
 ```
+web_ui port 8080        # move the ESP32's own admin page off port 80
+
 # if the Seakeeper is 172.16.102.1, put the ESP32's Ethernet side on that subnet:
 set_ap_ip 172.16.102.254
 portmap add TCP 80 172.16.102.1 80
 restart
 ```
+
+The ESP32 admin UI then lives at `http://192.168.10.50:8080/`, and port 80
+forwards to the Seakeeper web UI.
 
 If the Seakeeper turns out to be a **DHCP client**, skip `set_ap_ip` (leave the
 default `192.168.4.1/24`; the Seakeeper gets `192.168.4.2`) and use:
@@ -142,6 +148,18 @@ Either way the Pi reaches it at **`http://192.168.10.50/`** (the Pi's
 `launch-seakeeper.sh` kiosk already points there).
 
 ---
+
+## 6. Home-test result (verified 2026-11-01)
+
+- Flashed clean (ESP32-D0WD-V3, MAC `7c:d5:44:3b:ee:78`).
+- Configured for BoatNetwork; on reboot it associated (`hostapd_cli -i wlan1
+  all_sta` shows the MAC), got static `192.168.10.50`, and answers HTTP on
+  `http://192.168.10.50/` (title `ESP32 Ethernet Router`).
+- Ethernet downlink up: `192.168.4.1` with DHCP + NAT enabled, mDNS
+  `seakeeper-bridge.local`.
+
+Still to verify on the boat: the Seakeeper's real IP (static `172.16.102.1` vs
+DHCP) and the port forward (§5).
 
 ## Recovery
 
