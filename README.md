@@ -198,6 +198,9 @@ Firmware (apparent-wind `$WIMWV` + 30 s BoatNetwork auto-retry) lives in the
   and top CPU process every 2 s to `/var/log/diagwatch.log`. Kernel cmdline adds
   `softlockup_panic=1 hardlockup_panic=1 panic=10`; hardware watchdog enabled
   (`RuntimeWatchdogSec=15`) so a hang panics/reboots instead of freezing forever.
+- **CAN quirk**: after a hard reboot/boot-hang, Signal K can log
+  "Successfully connected to can0" yet show no N2K data (canboatjs socket is
+  stale; sources show `online: false`). Fix: `sudo systemctl restart signalk`.
 - **`fake-gps.service`** was disabled (fixed position feed to AvNav, outranked
   Signal K).
 
