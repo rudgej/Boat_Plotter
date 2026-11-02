@@ -15,34 +15,34 @@ import json, sys, urllib.request
 BASE = "http://localhost:3000/signalk/v1/api/vessels/self"
 
 # --- zone definitions (converted from user's degC / bar / m / V) ---
-TEMP = [  # degC: 0-85 nominal, 86-92 alert, 93+ warn
-    {"lower": 273.15, "upper": 358.15, "state": "nominal"},
-    {"lower": 359.15, "upper": 365.15, "state": "alert"},
-    {"lower": 366.15, "upper": 473.15, "state": "warn"},
+TEMP = [  # degC: 0-85.9 nominal, 85.9-92.9 alert, 92.9+ warn (gapless)
+    {"lower": 273.15, "upper": 359.05, "state": "nominal"},
+    {"lower": 359.05, "upper": 366.05, "state": "alert"},
+    {"lower": 366.05, "upper": 473.15, "state": "warn"},
 ]
-OIL_TEMP = [  # degC: 0-100 nominal, 101-110 alert, 111+ warn
-    {"lower": 273.15, "upper": 373.15, "state": "nominal"},
-    {"lower": 374.15, "upper": 383.15, "state": "alert"},
-    {"lower": 384.15, "upper": 473.15, "state": "warn"},
+OIL_TEMP = [  # degC: 0-100.9 nominal, 100.9-110.9 alert, 110.9+ warn (gapless)
+    {"lower": 273.15, "upper": 374.05, "state": "nominal"},
+    {"lower": 374.05, "upper": 384.05, "state": "alert"},
+    {"lower": 384.05, "upper": 473.15, "state": "warn"},
 ]
-DEPTH = [  # m: 0-2 warn, 2.1+ nominal
+DEPTH = [  # m: 0-2 warn, 2+ nominal (gapless)
     {"lower": 0.0, "upper": 2.0, "state": "warn"},
-    {"lower": 2.1, "upper": 1000.0, "state": "nominal"},
+    {"lower": 2.0, "upper": 1000.0, "state": "nominal"},
 ]
-VOLTS = [  # V: 0-23 warn, 23.1-24 alert, 24.1-28.5 nominal, 28.6+ warn
+VOLTS = [  # V: 0-23 warn, 23-24 alert, 24-28.5 nominal, 28.5+ warn (gapless)
     {"lower": 0.0, "upper": 23.0, "state": "warn"},
-    {"lower": 23.1, "upper": 24.0, "state": "alert"},
-    {"lower": 24.1, "upper": 28.5, "state": "nominal"},
-    {"lower": 28.6, "upper": 40.0, "state": "warn"},
+    {"lower": 23.0, "upper": 24.0, "state": "alert"},
+    {"lower": 24.0, "upper": 28.5, "state": "nominal"},
+    {"lower": 28.5, "upper": 40.0, "state": "warn"},
 ]
-OIL_PRESS = [  # bar: 0-1 warn, 1.1-2 alert, 2.1+ nominal
+OIL_PRESS = [  # bar: 0-1 warn, 1-2 alert, 2+ nominal (gapless)
     {"lower": 0.0, "upper": 100000.0, "state": "warn"},
-    {"lower": 110000.0, "upper": 200000.0, "state": "alert"},
-    {"lower": 210000.0, "upper": 2000000.0, "state": "nominal"},
+    {"lower": 100000.0, "upper": 200000.0, "state": "alert"},
+    {"lower": 200000.0, "upper": 2000000.0, "state": "nominal"},
 ]
-BOOST = [  # bar: 0-5 nominal, 5.1+ warn
+BOOST = [  # bar: 0-5 nominal, 5+ warn (gapless)
     {"lower": 0.0, "upper": 500000.0, "state": "nominal"},
-    {"lower": 510000.0, "upper": 2000000.0, "state": "warn"},
+    {"lower": 500000.0, "upper": 2000000.0, "state": "warn"},
 ]
 
 TARGETS = [
