@@ -163,8 +163,9 @@ The wind sensor (ESP32-S3) measures **apparent** wind and now sends
   publishes rolling-30 s litres-per-nautical-mile to
   `propulsion.main.fuel.economy` = (port+starboard fuel rate, L/h) ÷ SOG (kn).
   Suppressed below ~1 kn. Point a KIP numeric/gauge widget at that path.
-- OpenCPN was found auto-starting again after a reboot — re-disabled with
-  `systemctl disable --now opencpn-headless opencpn-xvfb opencpn-hdmi`.
+- OpenCPN was auto-starting again after every reboot despite `systemctl disable`
+  (a process kept invoking the units). Fixed by moving all six `opencpn*.service`
+  units to `.bak` + `daemon-reload` so nothing can start them.
 
 Firmware (apparent-wind `$WIMWV` + 30 s BoatNetwork auto-retry) lives in the
 `Wind-Sensor` repo, branch `Wind-Waveshare`.
@@ -185,12 +186,18 @@ Firmware (apparent-wind `$WIMWV` + 30 s BoatNetwork auto-retry) lives in the
 - **Memory watchdog**: `memwatch.timer` samples `free`, **kernel slab
   (`Slab`/`SUnreclaim`)**, and top processes every 5 min to
   `/var/log/memwatch.log`.
-- **Hard freeze (Oct 30, Oct 31, Nov 1)**: system hard-freezes after hours.
-  Not a userspace leak — the Nov 1 freeze had 4.2 GB free; slab leaks slowly
-  (~7 MB/h) but is nowhere near exhausting 8 GB, and there is no
-  OOM-kill/panic/hung-task in the journal. Kernel-level hang; the AIC8800 dongle
-  driver remains the prime suspect. OpenCPN was re-enabled by a reboot and has
-  been re-disabled (cuts ~780 MB constant load).
+- **Hard freeze (Oct 30, Oct 31, Nov 1, Nov 2)**: system hangs after minutes to
+  hours. Not a userspace leak — free RAM is high and slab is flat; no
+  OOM-kill/panic/hung-task in the journal. One crash showed a **selective hang**
+  (ping + Signal K + AvNav alive, SSH + Grafana dead, desktop frozen) which
+  points at a storage/I-O stall on the cheap `X15 SSD` NVMe (90 error-log
+  entries, 53 unsafe shutdowns) — prime suspect, alongside a confirmed marginal
+  5 V rail (`throttled=0x50000`, EXT5V ~4.96 V idle).
+- **Freeze diagnostics (active)**: `diagwatch` logs 5 V rail, core voltage,
+  throttle, load, free RAM, **D-state process count** (storage-stall indicator)
+  and top CPU process every 2 s to `/var/log/diagwatch.log`. Kernel cmdline adds
+  `softlockup_panic=1 hardlockup_panic=1 panic=10`; hardware watchdog enabled
+  (`RuntimeWatchdogSec=15`) so a hang panics/reboots instead of freezing forever.
 - **`fake-gps.service`** was disabled (fixed position feed to AvNav, outranked
   Signal K).
 
