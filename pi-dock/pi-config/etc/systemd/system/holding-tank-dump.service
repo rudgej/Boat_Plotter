@@ -1,0 +1,15 @@
+[Unit]
+Description=Holding tank discharge automation
+After=signalk.service
+Wants=signalk.service
+
+[Service]
+Type=simple
+User=pi
+EnvironmentFile=/etc/signalk-automation.env
+ExecStart=/usr/bin/python3 /usr/local/bin/holding-tank-dump.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

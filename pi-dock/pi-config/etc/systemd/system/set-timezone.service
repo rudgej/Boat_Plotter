@@ -1,0 +1,7 @@
+[Unit]
+Description=Set system timezone from GPS position (oneshot)
+After=signalk.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/set-timezone.py

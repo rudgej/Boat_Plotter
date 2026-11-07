@@ -1,0 +1,12 @@
+[Unit]
+Description=Bring up can0 at 250 kbit/s for NMEA2000
+Before=signalk.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/ip link set can0 up type can bitrate 250000 restart-ms 100
+ExecStop=/sbin/ip link set can0 down
+
+[Install]
+WantedBy=multi-user.target

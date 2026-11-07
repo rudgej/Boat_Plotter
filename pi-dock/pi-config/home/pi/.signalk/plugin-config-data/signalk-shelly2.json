@@ -1,0 +1,25 @@
+{
+  "configuration": {
+    "poll": 5000,
+    "deviceConfigs": [
+      {
+        "id": "shellyplus1-e465b842fb34",
+        "address": "192.168.10.151",
+        "hostname": "ShellyPlus1-E465B842FB34.local",
+        "model": "SNSW-001X16EU",
+        "name": "Holding Tank",
+        "enabled": true
+      },
+      {
+        "id": "shellyplus1pm-441793d69434",
+        "address": "192.168.10.142",
+        "hostname": "ShellyPlus1PM-441793D69434.local",
+        "model": "SNSW-001P16EU",
+        "name": null,
+        "enabled": true
+      }
+    ]
+  },
+  "enabled": true,
+  "enableDebug": false
+}

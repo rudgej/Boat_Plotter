@@ -1,0 +1,11 @@
+[Unit]
+Description=Disable NVMe runtime power management (workaround for idle disk wedge)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for d in /sys/block/nvme*/device/power/control; do [ -w "$d" ] && echo on > "$d"; done'
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+--- SwitchBase.js.bak	2026-09-25 14:07:51.276309104 +0100
++++ SwitchBase.js	2026-11-02 16:59:36.100120646 +0000
+@@ -22,9 +22,8 @@
+             {
+                 key: `output`,
+                 path: `state`,
+-                meta: {
+-                    units: 'bool'
+-                },
++                meta: {},
++
+                 putHandler: (device, id, value) => {
+                     return this.setValue('output', 'on', value === 1 || value === 'on' || value === 'true' || value === true);
+                 }

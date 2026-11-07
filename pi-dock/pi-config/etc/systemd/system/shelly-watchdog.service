@@ -1,0 +1,7 @@
+[Unit]
+Description=Shelly connection self-heal check (oneshot)
+After=signalk.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/shelly-watchdog.sh

@@ -1,0 +1,14 @@
+{
+  "configuration": {
+    "sun": true,
+    "wind": {
+      "angleTrueWater": true,
+      "groundWind": true,
+      "directionTrue": true,
+      "groundWindDirection": true
+    }
+  },
+  "enabled": true,
+  "enableDebug": false,
+  "enableLogging": false
+}

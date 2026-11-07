@@ -1,0 +1,10 @@
+[Unit]
+Description=Run CAN health watchdog every 10s
+
+[Timer]
+OnBootSec=90
+OnUnitActiveSec=10
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target

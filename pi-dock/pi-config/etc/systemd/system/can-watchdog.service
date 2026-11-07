@@ -1,0 +1,7 @@
+[Unit]
+Description=CAN bus health check (oneshot)
+After=can0-nmea2000.service signalk.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/can-watchdog.sh

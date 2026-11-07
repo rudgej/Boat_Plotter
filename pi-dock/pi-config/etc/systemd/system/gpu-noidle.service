@@ -1,0 +1,11 @@
+[Unit]
+Description=Disable GPU runtime power management (workaround for idle display hangs)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for d in /sys/class/drm/card0/device/power/control /sys/class/drm/card1/device/power/control /sys/bus/platform/devices/1002000000.v3d/power/control /sys/bus/platform/devices/axi:gpu/power/control; do [ -w "$d" ] && echo on > "$d"; done'
+
+[Install]
+WantedBy=multi-user.target
