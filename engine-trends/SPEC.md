@@ -149,6 +149,9 @@ Individual 15-s samples are never retained.
 - `journal_mode=WAL`, `synchronous=FULL` — durable against abrupt power-off (the key being turned off).
 - **Write-through:** a REVIEW event is committed to SQLite the instant it is raised, before anything else.
 - Retained indefinitely: baselines, session records, and REVIEW events. Never pruned.
+- **Not InfluxDB/Grafana:** Grafana is a dashboard renderer, *not* a database; InfluxDB is a
+time-series store ill-suited to relational baselines / session records / REVIEW events. Both are an
+*optional later* charting layer — never the source of truth.
 
 ### REVIEW events
 
@@ -185,20 +188,38 @@ display units.
 
 ## 9. Output & UI (KIP-first)
 
-**What KIP can do:** KIP is a *current-state* dashboard — it renders the live value of Signal K
-paths (gauges, numeric, text, date/time). It **cannot scroll a history list** — there is no
-time-series or log-list widget in KIP.
+**What KIP can do:** KIP renders the *current value* of Signal K paths (gauges, numeric, text,
+date/time). It cannot scroll a history list — there is no time-series or log-list widget in KIP.
 
-So:
+### Live readout — current value vs band-aware baseline
+
+The daemon publishes, per engine and per parameter, the **operational baseline for the RPM band the
+engine is currently in**, so KIP shows "current vs expected-for-this-band" with no user interaction:
+
+```
+self.engineHealth.<engine>.band                     = "Band 2 (1400–1800)"
+self.engineHealth.<engine>.<param>.current          = 4.5          (display units)
+self.engineHealth.<engine>.<param>.baseline         = 4.6          (operational baseline for current band)
+self.engineHealth.<engine>.<param>.baselineStatus   = ESTABLISHED | ESTABLISHING | N/A
+self.engineHealth.<engine>.status                   = NORMAL | REVIEW
+self.engineHealth.<engine>.message                  = latest REVIEW message ("" when NORMAL)
+```
+
+KIP readout per parameter, e.g. **"Oil pressure: 4.5 bar (baseline 4.6 bar)"**. The baseline value
+updates automatically as the engine moves between RPM bands; when idle/manoeuvring, or when the band
+isn't baselined yet, `baseline` shows `N/A` so the user is never shown a misleading number. This is
+the "glance and judge severity yourself" view — 4.5 vs 4.6 is a small gap, 4.5 vs 5.5 is not.
+
+### REVIEWs and history
 
 | Surface | What it shows |
 |---|---|
-| **KIP** | Live status per engine: `self.engineHealth.port.status` (`NORMAL`/`REVIEW`) and `self.engineHealth.port.message` (the latest factual message). One widget pair per engine. |
-| **Signal K notifications** | Each REVIEW also raises `notifications.engineHealth.<engine>`, visible in Signal K's own notification UI. |
-| **History** | SQLite (source of truth). Viewing history is *not* in KIP — read it from the DB, or via a tiny read-only page served by the daemon if desired (deferred; not required for v1). |
+| **KIP** | The live readout above, plus per-engine `status` + `message`. |
+| **Signal K notifications** | Each REVIEW raises `notifications.engineHealth.<engine>` (current, not an archive). |
+| **History (source of truth)** | SQLite. Read it via SSH (`sqlite3 …`), or a small read-only page served by the daemon (deferred; not required for v1). |
 
-The guarantee that matters: a REVIEW is written to SQLite and raised as a Signal K notification
-**immediately**, so turning the key off never loses it.
+The guarantee: a REVIEW is written to SQLite and raised as a Signal K notification **immediately** —
+turning the key off never loses it.
 
 ---
 
