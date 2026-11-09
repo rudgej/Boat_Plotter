@@ -228,3 +228,15 @@ Notes:
    - **"Signal K to NMEA 0183" — NOT needed.** That plugin exists to feed NMEA 0183 *consumers*
      (e.g. OpenCPN over TCP/UDP). AvNav connects to Signal K natively over WebSocket, so installing
      it would be dead weight. Only add it if a future tool needs a raw 0183 feed.
+
+---
+
+## 13. Follow-up phases (deferred — do NOT build during the base rebuild)
+
+These are planned but deliberately **not** part of the initial rebuild. Do them after the box is
+fully running and verified:
+
+- **Engine trend monitoring** — full locked spec at [`engine-trends/SPEC.md`](engine-trends/SPEC.md).
+  Build `engine-trends.py` + systemd unit once Signal K is live and the two engines' N2K paths are
+  visible in the `self` tree (instance→Port/Starboard mapping to be confirmed on the boat).
+- Grafana / InfluxDB charting — optional, only if month-scale visual trends are wanted later.
