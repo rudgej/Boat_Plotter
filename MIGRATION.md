@@ -185,7 +185,33 @@ Then leave it idle 24–48 h. No 5V rail, no HAT, no Pi PMIC — the soak should
 
 ---
 
-## 11. Gemini checklist — what we adopted, what we corrected
+## 11. Remote access (Tailscale)
+
+Install **Tailscale** (WireGuard mesh VPN) so the box is reachable from anywhere — no port
+forwarding, and it keeps working through marina Wi-Fi / phone hotspots where the uplink IP
+changes or isn't routable:
+
+```
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up            # add --ssh if you want key-based SSH via the tailnet
+```
+
+Log in at **login.tailscale.com**, then `tailscale ip` prints a stable `100.x.y.z` address.
+From any device on your tailnet:
+
+- Signal K → `http://<tailscale-ip>:3000`
+- AvNav    → `http://<tailscale-ip>:8080`
+- SSH      → `ssh pi@<tailscale-ip>`
+
+Notes:
+
+- This is a **system service**, not a Signal K plugin — it sits underneath everything, so it
+  also gives you remote access for RS485/CAN/automation debugging.
+- Free for personal use; runs as a systemd service and survives reboots.
+
+---
+
+## 12. Gemini checklist — what we adopted, what we corrected
 
 1. **Persistent serial naming** — *adopted.* Built-in `ttyS*` are already stable; the only USB
    device (CANable) is pinned to `can0` by udev (§5.1). The `by-path`/`by-id` symlink advice
