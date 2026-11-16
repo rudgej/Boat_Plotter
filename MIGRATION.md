@@ -6,7 +6,8 @@
 ## 0. Hardware & architecture
 
 - **CWWK Fanless Industrial Mini PC** — Intel **N100**, **8 GB RAM**, **128 GB M.2 NVMe** (included),
-  **2× DB9 COM (RS232/RS485, jumper-switchable)**, dual **2.5 GbE i226-V**, 2× HDMI + DP + USB-C,
+  **2× DB9 COM (RS232/RS485, jumper-switchable — set both to RS485, listen-only; §6)**, dual
+  **2.5 GbE i226-V**, 2× HDMI + DP + USB-C,
   SIM slot, M.2 E-key, **12 V DC in**.
 - **CAN / NMEA 2000:** CANable2 USB-CAN (STM32G431CB), **candlelight** firmware → kernel
   `gs_usb` → `can0`. Already re-flashed from slcan; see §5.
@@ -32,7 +33,7 @@
    sudo apt update && sudo apt install -y git curl wget htop lm-sensors \
      hostapd dnsmasq network-manager labwc kanshi squeekboard pcmanfm \
      libgtk-4-dev libgtk4-layer-shell-dev gcc pkg-config python3 python3-pip \
-     bluez pipewire pipewire-pulse can-utils jq
+     bluez pipewire pipewire-pulse can-utils jq picocom
    ```
    `[TODO-CONFIRM]` `dock.c` targets GTK4 layer-shell; if it's GTK3, install
    `libgtk-3-dev libgtk3-layer-shell-dev` instead (see `pi-dock/README.md` §1).
@@ -215,10 +216,25 @@ Optional clarity symlinks:
 KERNEL=="ttyS0", SYMLINK+="rs485-1"
 KERNEL=="ttyS1", SYMLINK+="rs485-2"
 ```
-1. Set both COMs to **RS485** via the board jumpers (default is RS232).
-2. Signal K → Data Connections → Serial provider per port (`/dev/rs485-1`, `/dev/rs485-2`).
-3. **Baud must match the instrument** `[TODO-CONFIRM]`: 4800 = classic NMEA 0183, 38400 = AIS/fast.
-   Confirm what the old HAT's two RS485 lines actually fed.
+
+**Both ports are LISTEN-ONLY (receive only).** Nothing is ever driven back out onto those
+pairs: no half-duplex turnaround, no contention with the instruments, and no way to accidentally
+transmit into instrument wiring. The consequence is simply that Signal K must be configured
+**input-only** on both, and these ports can never feed an autopilot or any other NMEA 0183 sink.
+All transmission in this build goes out over NMEA 2000 (§5), not 0183.
+
+| Port | Device | Rate | Feeds |
+|---|---|---|---|
+| COM 1 | `/dev/rs485-1` | **4800 8N1** | general instrument data (classic NMEA 0183) |
+| COM 2 | `/dev/rs485-2` | **38400 8N1** | AIS (the conventional AIS rate) |
+
+1. Set both COMs to **RS485** via the board jumpers (factory default is RS232). Wiring is the
+   A/B differential pair plus signal ground; these are short runs, so no bus termination is needed.
+2. Signal K → *Data Connections → Add → Serial* per port, **input only**:
+   - `/dev/rs485-1` @ 4800 8N1
+   - `/dev/rs485-2` @ 38400 8N1
+3. `[TODO-CONFIRM]` if a port stays silent, the port↔instrument mapping is reversed or the rate
+   differs — try the other COM and the other rate before assuming a wiring fault.
 
 ---
 
@@ -276,6 +292,8 @@ ip -details link show can0
 curl -s localhost:3000/signalk/v1/api/vessels/self | head
 curl -sI localhost:8080 | head -1
 candump -t d can0 | grep -m5 '"130306"\|130306'   # wind PGNs the plotter transmits
+picocom -b 4800 -d 8 -p n /dev/rs485-1            # COM 1: expect NMEA 0183 sentences
+picocom -b 38400 -d 8 -p n /dev/rs485-2           # COM 2: expect AIS (!AIVDM) sentences
 ```
 For the last one, cross-check that PGN 130306 is appearing with a **source address other than
 the instruments'** — that's the plotter's own claimed address, and it proves the TX path end to
@@ -318,8 +336,8 @@ Notes:
    device (CANable) is pinned to `can0` by udev (§5.1). The `by-path`/`by-id` symlink advice
    matters for USB serial adapters; ours is built-in, so this is a non-issue but the symlinks are
    added anyway for clarity (§6).
-2. **Baud rate 4800 / 38400** — *adopted as guidance.* The correct value is dictated by whatever is
-   wired to each RS485 line, not by Signal K — `[TODO-CONFIRM]` (§6.3).
+2. **Baud rate 4800 / 38400** — *confirmed.* COM 1 = 4800 for general instrument data, COM 2 =
+   38400 for AIS, and **both are listen-only** — Signal K is configured input-only on each (§6).
 3. **ext4 + journaling** — *adopted.* Debian installer default (§1.1).
 4. **Minimise disk writes** — *adopted lightly.* Set Signal K log level to info and skip aggressive
    voyage recording; on NVMe it's a longevity nicety, not a correctness fix.
