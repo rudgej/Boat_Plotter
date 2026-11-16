@@ -7,8 +7,9 @@
 
 - **CWWK Fanless Industrial Mini PC** — Intel **N100**, **8 GB RAM**, **128 GB M.2 NVMe** (included),
   **2× DB9 COM (RS232/RS485, jumper-switchable — set both to RS485, listen-only; §6)**, dual
-  **2.5 GbE i226-V**, 2× HDMI + DP + USB-C,
-  SIM slot, M.2 E-key, **12 V DC in**.
+  **2.5 GbE i226-V**, 2× HDMI + DP + USB-C, SIM slot, M.2 E-key, **12 V DC in**.
+- **Shipped state:** likely **Windows 11 preinstalled** with Secure Boot on. Irrelevant — the NVMe
+  gets wiped — but the BIOS needs three settings first, one of them critical (§1).
 - **CAN / NMEA 2000:** CANable2 USB-CAN (STM32G431CB), **candlelight** firmware → kernel
   `gs_usb` → `can0`. Already re-flashed from slcan; see §5.
 - **Second Wi-Fi:** the AIC8800 USB dongle (BoatNetwork AP).
@@ -21,6 +22,22 @@
 ---
 
 ## 1. OS install
+
+**Before anything else — BIOS.** These units ship with **Windows 11 preinstalled** (the OEM key
+lives in the BIOS) and **Secure Boot enabled**. The Windows install is irrelevant — step 1 wipes
+the NVMe — but the BIOS settings are not, and two of them bite only later, on the boat, if missed:
+
+| Setting | Menu (AMI BIOS, `Del` at power-on) | Set to | Why |
+|---|---|---|---|
+| **Restore AC Power Loss** — also *After Power Loss*, *AC Power Recovery*, *State After G3* | Advanced / Power Management | **Power On** | **The most important setting on this box.** Boat DC gets cut — breaker, battery switch, brownout. Without it the plotter stays dead until someone physically presses the button, which is no use at anchor or underway. The Pi did this by default; the PC does not. |
+| **Secure Boot** | Security / Boot | **Disabled** | Debian netinst won't boot otherwise |
+| **Intel VMD / RST** (if shown) | Advanced → System Agent / Storage | **Disabled** | if left enabled the Debian installer sees **no disk at all** — a known N100 trap |
+| **Fast Boot** | Boot | **Disabled** | so the USB stick appears in the boot menu |
+| Boot order | Boot | **USB first** | |
+| **WDT / hardware watchdog** | Advanced | note its location | optional, not needed (§5/`can-watchdog` covers the CAN side) |
+
+While the lid is off, also move **both COM jumpers to RS485** (§6) — that's a board jumper, not a
+BIOS option. Confirm the BIOS reports **8 GB RAM** and the **128 GB NVMe** before closing up.
 
 1. Debian 13 (Trixie) amd64 netinst, **no desktop yet**. Hostname `bossy`, user `pi` (sudo),
    disk = the 128 GB NVMe, **ext4** (installer default — journaling on). Enable SSH.
@@ -301,6 +318,11 @@ end. If it never appears, check the `signalk-to-nmea2000` plugin's `Wind (130306
 enabled and that wind is arriving from a non-N2K source (see §5).
 
 Then leave it idle 24–48 h. No 5V rail, no HAT, no Pi PMIC — the soak should simply pass.
+
+**Unattended power-cycle test — do this before the box goes back in the console:** pull the DC
+plug, wait 10 s, restore it. The box must come back up on its own, with Signal K, AvNav and `can0`
+all back within a couple of minutes. If it doesn't, *Restore AC Power Loss* isn't set (§1) — find
+that out now, not at anchor.
 
 ---
 
