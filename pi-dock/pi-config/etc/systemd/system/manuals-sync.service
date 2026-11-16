@@ -1,0 +1,9 @@
+[Unit]
+Description=Sync boat manuals from Dropbox (one-way, Dropbox -> local)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=pi
+ExecStart=/usr/local/bin/manuals-sync.sh

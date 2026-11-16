@@ -1,41 +1,74 @@
-# Dropbox sync — boat manuals
+# Dropbox — offline boat manuals
 
-Status: **deferred — never implemented on the Pi; planned for the x86 rebuild.**
+The boat keeps a **local copy of the manuals library** so it works with no internet at sea.
+Source of truth is one **dedicated Dropbox folder**, maintained from home. Sync is strictly
+**one-way: Dropbox → boat**, so the boat can never overwrite or delete the master copy.
 
-The only Dropbox use is the **boat manuals library**: a one-way pull from a Dropbox folder into the
-local manuals tree, so the boat serves manuals offline.
+Built here as real files, restored by §4 and enabled by `bootstrap.sh`:
 
-## What / direction
+| Path | Role |
+|---|---|
+| `/usr/local/bin/manuals-sync.sh` | `rclone sync` Dropbox → `/home/pi/manuals`, skips quietly when offline |
+| `/etc/systemd/system/manuals-sync.{service,timer}` | runs 5 min after boot, then every 30 min |
+| `/etc/nginx/sites-available/manuals` | serves the library read-only on **:8081** (`:3000` = Signal K, `:8080` = AvNav) |
+| `/home/pi/manuals/` | the local copy (created by the sync) |
+| `pi-dock/launch-manuals.sh` | kiosk window for the dock button |
 
-- One-way: **Dropbox → local**. The boat never writes back.
-- Master copy is a Dropbox folder (e.g. `Boat/Manuals/`), maintained from home.
-- Local destination: `/home/pi/manuals/`.
+**Why nginx and not `python3 -m http.server`:** only nginx honours HTTP **Range** requests, so a
+300-page engine manual pages and scrolls in the kiosk browser instead of having to be fetched whole
+first. That difference is very obvious on a slow link and in 200 MB PDFs.
 
-## Mechanism
+## One-time setup (needs your Dropbox login — cannot be scripted)
 
-- **rclone** (CLI, headless). The official Dropbox Linux client is GUI-oriented; rclone is lighter
-  and runs cleanly from a systemd timer.
-- `rclone sync dropbox:BoatManuals /home/pi/manuals` — run on boot + hourly via a timer, i.e. it
-  syncs whenever the box happens to be online. No daemon, no 24/7 requirement.
+1. Create the dedicated folder in Dropbox, e.g. **`BoatManuals`**, and put the manuals in it.
+2. On the N100:
+   ```
+   sudo apt install rclone        # or: sudo dpkg -i <usb>/offline/debs/rclone_*.deb
+   rclone config                  # n) new remote
+                                  #    name> dropbox
+                                  #    storage> dropbox
+                                  #    (accept defaults, authorise in a browser via the URL it prints)
+   rclone lsd dropbox:BoatManuals # must list your folders
+   ```
+3. Do the first sync by hand and check it:
+   ```
+   sudo systemctl start manuals-sync.service
+   sudo tail -20 /var/log/manuals-sync.log
+   find /home/pi/manuals -type f | head
+   ```
+4. Enable the timer (also done by `bootstrap.sh`):
+   ```
+   sudo systemctl enable --now manuals-sync.timer
+   ```
+5. Enable the web view:
+   ```
+   sudo ln -sf /etc/nginx/sites-available/manuals /etc/nginx/sites-enabled/manuals
+   sudo rm -f /etc/nginx/sites-enabled/default     # stops nginx answering on 80
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+   Then `http://localhost:8081/` lists the library.
 
-## Install
+## Auth — never commit it
 
+The rclone Dropbox remote stores an **OAuth token** in `~/.config/rclone/rclone.conf`, i.e.
+`/home/pi/.config/rclone/rclone.conf` once set up as `pi`. That file is user-filled and must never
+be committed to this repo. To clone the setup onto a replacement box, copy that file across
+`sftp`/USB with `chmod 600`, or just re-run `rclone config`.
+
+## Dock button (optional, 1 line)
+
+`dock.c` builds its buttons from a table, so adding **Manuals** is a single entry next to
+`launch-grafana.sh`:
+
+```c
+{"Manuals",   "/usr/local/bin/launch-manuals.sh"},
 ```
-sudo apt install rclone
-rclone config          # create remote `BoatManuals` of type `dropbox`
-```
 
-## Config / auth
+Then rebuild the dock (§7). Omitted by default so the dock keeps the layout you know; the library is
+reachable at `:8081` from any browser regardless.
 
-- Config file: `~/.config/rclone/rclone.conf`.
-- **Auth: an rclone Dropbox remote holds an OAuth token in that file — it is user-filled and must
-  NOT be committed.** Create the remote with `rclone config` on the box; nothing secret goes in
-  this repo.
-- The destination folder is created by the sync itself; no server-side setup beyond the Dropbox
-  folder existing.
+## Naming convention (recommended)
 
-## Left unfinished
-
-The manuals library itself — nginx + `autoindex` serving `/home/pi/manuals` on `:8081`, a dock
-"Manuals" button (Chromium `--app` → `http://localhost:8081/`), and the folder/naming convention
-(`Category/Manufacturer_Model_Type.pdf`) — was agreed in principle but **not built**.
+`Category/Manufacturer_Model_Type.pdf`, e.g. `Engine/Yanmar_4JH_Workshop.pdf`,
+`Electronics/Raymarine_Axiom_Manual.pdf`. rclone mirrors whatever structure you use, so a tidy
+Dropbox folder gives a tidy on-boat library for free.

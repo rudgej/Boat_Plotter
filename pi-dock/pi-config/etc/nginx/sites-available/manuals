@@ -1,0 +1,26 @@
+# Offline boat manuals. Served on :8081 so it doesn't clash with Signal K (3000)
+# or AvNav (8080). nginx rather than `python -m http.server` because only nginx
+# honours HTTP Range requests, which is what lets large PDFs page/scroll in the
+# kiosk browser instead of downloading in one lump.
+server {
+    listen 8081 default_server;
+    listen [::]:8081 default_server;
+    server_name _;
+
+    root /home/pi/manuals;
+    autoindex on;
+    autoindex_exact_size off;
+    autoindex_localtime on;
+    charset utf-8;
+
+    # Manuals are large PDFs; don't hold them in memory.
+    sendfile on;
+    tcp_nopush on;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    access_log /var/log/nginx/manuals-access.log;
+    error_log  /var/log/nginx/manuals-error.log warn;
+}

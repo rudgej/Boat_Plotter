@@ -1,6 +1,6 @@
 # Gauge zones (meta.zones)
 
-`set-zones.py` already contains the real paths and zone bands — run it once (§2.6 of
+`set-zones.py` already contains the real paths and zone bands — run it once (§2.7 of
 `MIGRATION.md`), then restart Signal K so KIP gauges pick the zones up. Values below are as encoded
 in the script (display units; the script converts to SI).
 

@@ -15,7 +15,7 @@ Four radial gauges, **port engine only**:
 
 **This one does not come back with `.signalk`** — it's injected into the KIP kiosk's Chromium
 localStorage over CDP by `inject-kip.sh` + `inject-kip.mjs`, which read `/home/pi/kip-config.json`.
-Restore steps are in `MIGRATION.md` §2.8: copy both files to `/home/pi/` (hard-coded paths), make
+Restore steps are in `MIGRATION.md` §2.9: copy both files to `/home/pi/` (hard-coded paths), make
 sure `nodejs` is present, then run `inject-kip.sh`. Requires Node 21+/22+ for a global `WebSocket`.
 
 ### "default" — `pi-dock/pi-config/home/pi/.signalk/applicationData/users/boat/kip/11.0.0.json`
