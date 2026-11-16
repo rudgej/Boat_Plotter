@@ -85,7 +85,7 @@ clear CMOS via the board jumper.
    sudo apt update && sudo apt install -y git curl wget htop lm-sensors \
      hostapd dnsmasq network-manager labwc kanshi squeekboard pcmanfm \
      libgtk-4-dev libgtk4-layer-shell-dev gcc pkg-config python3 python3-pip \
-     bluez pipewire pipewire-pulse can-utils jq picocom
+     bluez pipewire pipewire-pulse can-utils jq picocom chromium nodejs
    ```
    `[TODO-CONFIRM]` `dock.c` targets GTK4 layer-shell; if it's GTK3, install
    `libgtk-3-dev libgtk3-layer-shell-dev` instead (see `pi-dock/README.md` §1).
@@ -144,6 +144,23 @@ clear CMOS via the board jumper.
    | `signalk-fuel-economy` | **this repo** (`signalk-plugins/`) | copy in + add to `package.json` deps |
 
    Only the first three are downloadable; the last two are custom and exist only here.
+8. **Restore the `Engine` KIP dashboard** (the other survivor — the `default` helm dashboard comes
+   back with `.signalk` above). This one does **not** live in `.signalk`; it's `pi-dock/kip-config.json`,
+   pushed into the KIP kiosk's Chromium *localStorage* over CDP. Nothing in §4 restores it, because
+   the files sit in `pi-dock/`, not in `pi-config/`:
+   ```
+   sudo cp pi-dock/kip-config.json pi-dock/inject-kip.mjs /home/pi/
+   sudo chown pi:pi /home/pi/kip-config.json /home/pi/inject-kip.mjs
+   ./pi-dock/inject-kip.sh          # headless Chromium + CDP, then restores the kiosk
+   ```
+   Both paths are hard-coded to `/home/pi/` in `inject-kip.mjs` and `inject-kip.sh`, so don't
+   relocate them. Two prerequisites, both easy to miss:
+   - **`nodejs`** must be installed — it normally arrives with Signal K; `inject-kip.sh` calls
+     `node`. If missing: `sudo apt install nodejs`.
+   - **`inject-kip.mjs` uses a global `WebSocket`**, which exists in Node **21+ (experimental) /
+     22+ (stable)** but **not** in Node 20. `[TODO-CONFIRM]` which Signal K pulls in; if the
+     script exits at *"ws not open"*, that's the cause — `node --version` and upgrade if it's 20.
+   Verify: the Engine button shows four port-engine gauges (§7), not a blank KIP page.
 
    `signalk-fuel-economy` reads `propulsion.port.fuel.rate` and `propulsion.starboard.fuel.rate`
    (m³/s, summed) plus `navigation.speedOverGround`, and publishes `propulsion.main.fuel.economy`
@@ -479,6 +496,16 @@ unknown is marked `[TODO-CONFIRM]` and must be settled on the boat.
 | **KIP dashboards** | two survive and are committed: **`Engine`** (`kip-config.json`) and **`default`** (`11.0.0.json`); the other ~3 are lost — `pi-dock/kip/DASHBOARDS.md` |
 | **Gauge zones** | `set-zones.py` already holds the real paths + bands — `signalk-zones/ZONES.md`; whether it was run on the Pi `[TODO-CONFIRM]` (idempotent, run once) |
 | **fuel-economy** | paths documented in §2.7; instance mapping `[TODO-CONFIRM]` |
+
+**Review note (verified against the repo, not taken on trust):** the handover's technical claims
+all check out — `kip-config.json` really does hold the four `propulsion.port.*` gauges; `11.0.0.json`
+really is 10 numeric / 6 linear / 1 compass / 1 wind-steer / 1 boolean / 2 text; the fuel-economy
+plugin really does read `propulsion.{port,starboard}.fuel.rate` (m³/s, converted in-plugin to L/h)
+and publish over `propulsion.main.fuel.economy` with a 30 s window and 0.5 m/s SOG floor; and the
+`ZONES.md` bands match `set-zones.py` exactly. One gap it introduced has been closed in §2.8: the
+`Engine` dashboard lives in `pi-dock/kip-config.json` and is injected via CDP, so it needed an
+explicit restore step — and `chromium`/`nodejs` were missing from the package list entirely (§1.4),
+despite every kiosk launcher calling `chromium`.
 
 Everything else in the target stack is covered elsewhere in this document:
 Debian (§1), Signal K (§2), AvNav (§3), the dock / bottom-bar apps (`dock.c` + `launch-*.sh` + labwc

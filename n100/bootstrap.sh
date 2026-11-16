@@ -34,7 +34,7 @@ run()  { if [[ $CHECK_ONLY -eq 1 ]]; then printf '    would: %s\n' "$*"; else "$
 
 PKGS="git curl wget htop lm-sensors hostapd dnsmasq network-manager labwc kanshi
 squeekboard pcmanfm libgtk-4-dev libgtk4-layer-shell-dev gcc pkg-config python3
-python3-pip bluez pipewire pipewire-pulse can-utils jq picocom"
+python3-pip bluez pipewire pipewire-pulse can-utils jq picocom chromium nodejs"
 
 UNITS="boatnetwork.service boatnetwork-dnsmasq.service can0-nmea2000.service
 can-watchdog.timer shelly-watchdog.timer holding-tank-dump.service
@@ -90,7 +90,19 @@ else
     warn "no layer-shell dev package - install libgtk-3-dev libgtk3-layer-shell-dev"
 fi
 
-say "5. udev + units (MIGRATION 4/5/6)"
+say "5. KIP Engine dashboard (MIGRATION 2.8)"
+if [[ -f "$REPO_DIR/pi-dock/kip-config.json" ]]; then
+    run cp "$REPO_DIR/pi-dock/kip-config.json" "$REPO_DIR/pi-dock/inject-kip.mjs" /home/pi/
+    if [[ $CHECK_ONLY -eq 0 ]]; then
+        chown pi:pi /home/pi/kip-config.json /home/pi/inject-kip.mjs 2>/dev/null
+    fi
+    ok "kip-config.json + inject-kip.mjs -> /home/pi/"
+    ok "run ./pi-dock/inject-kip.sh LATER, once Signal K + chromium are up"
+else
+    warn "pi-dock/kip-config.json not found"
+fi
+
+say "6. udev + units (MIGRATION 4/5/6)"
 run udevadm control --reload
 run systemctl daemon-reload
 for u in $UNITS; do
@@ -106,7 +118,7 @@ for u in $UNITS; do
 done
 ok "NOT enabled (Pi-only): gpu-noidle, nvme-noidle, diagwatch, opencpn-*"
 
-say "6. verification"
+say "7. verification"
 if [[ -d /sys/class/net/can0 ]]; then ok "can0 exists"
 else warn "can0 missing - check 'lsusb | grep 1d50:606f' (MIGRATION 5)"; fi
 for p in /dev/rs485-1 /dev/rs485-2; do

@@ -13,6 +13,11 @@ Four radial gauges, **port engine only**:
 - `self.propulsion.port.temperature` (coolant)
 - `self.propulsion.port.oilTemperature`
 
+**This one does not come back with `.signalk`** — it's injected into the KIP kiosk's Chromium
+localStorage over CDP by `inject-kip.sh` + `inject-kip.mjs`, which read `/home/pi/kip-config.json`.
+Restore steps are in `MIGRATION.md` §2.8: copy both files to `/home/pi/` (hard-coded paths), make
+sure `nodejs` is present, then run `inject-kip.sh`. Requires Node 21+/22+ for a global `WebSocket`.
+
 ### "default" — `pi-dock/pi-config/home/pi/.signalk/applicationData/users/boat/kip/11.0.0.json`
 
 The main helm dashboard (10 numeric, 6 linear gauges, 1 compass, 1 wind-steer, 1 boolean switch,
