@@ -56,23 +56,36 @@ echo "==> writing (this takes a few minutes)"
 sudo dd if="$ISO" of="/dev/r$DEV" bs=4m status=progress || die "dd failed"
 sync
 
-echo "==> reading back and verifying (another minute)"
-SRC_SHA="$(shasum -a 256 "$ISO" | awk '{print $1}')"
+echo "==> reading back and verifying (another minute, maybe more on a slow stick)"
 ISO_BYTES="$(stat -f%z "$ISO")"
-# dd one block past the end, then truncate to the exact ISO length, so the
-# hash covers exactly the image bytes. Guard against an empty read: hashing
-# nothing yields e3b0c442... and would compare equal to another empty read.
-DEV_SHA="$(dd if="/dev/r$DEV" bs=4m count=$(( ISO_BYTES / 4194304 + 1 )) 2>/dev/null \
-           | head -c "$ISO_BYTES" | shasum -a 256 | awk '{print $1}')"
-if [[ -z "$DEV_SHA" || "$DEV_SHA" == e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ]]; then
-    die "read-back returned no data - cannot confirm the write"
+
+# Read to a FILE with an exact block count, never `dd | head`. Piping into
+# `head -c` closes the pipe early, dd dies of SIGPIPE, and with pipefail plus
+# set -e the script exits silently with no verdict - which is how a finished
+# write once looked like a hang.
+if (( ISO_BYTES % 1048576 == 0 )); then BS=1m; BLK=1048576
+elif (( ISO_BYTES % 512 == 0 ));     then BS=512; BLK=512
+else BS=1m; BLK=1048576; fi
+COUNT=$(( ISO_BYTES / BLK ))
+RB=/tmp/usb-readback.img
+
+rm -f "$RB"
+dd if="/dev/r$DEV" of="$RB" bs="$BS" count="$COUNT" 2>/dev/null || true
+GOT=$(stat -f%z "$RB" 2>/dev/null || echo 0)
+if (( GOT < 65536 )); then
+    rm -f "$RB"
+    die "read-back returned only $GOT bytes - cannot confirm the write"
 fi
-if [[ "$DEV_SHA" != "$SRC_SHA" ]]; then
-    echo "  source: $SRC_SHA"
-    echo "  stick : $DEV_SHA"
-    die "read-back mismatch - reflash, the stick may be failing"
+
+if cmp -s "$RB" "$ISO"; then
+    rm -f "$RB"
+    echo "    ok - stick matches the ISO byte-for-byte"
+else
+    echo "    read-back DIFFERS from the ISO:"
+    cmp "$RB" "$ISO" 2>&1 | head -3 | sed 's/^/      /'
+    rm -f "$RB"
+    die "read-back mismatch - reflash; the stick may be failing or counterfeit"
 fi
-echo "    ok - stick matches the ISO byte-for-byte"
 
 echo "==> ejecting"
 diskutil eject "/dev/$DEV" || true
