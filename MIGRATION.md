@@ -2,6 +2,11 @@
 
 > Read top-to-bottom when the box has arrived and you're SSH'd in, aiming for a one-pass rebuild.
 > `[TODO-CONFIRM]` = needs a value from you/the boat before proceeding.
+>
+> **Shortcut:** once Debian is installed and this repo is on the box, `sudo ./n100/bootstrap.sh`
+> does the mechanical half — packages, the un-packaged Python dep, config restore, dock build,
+> udev, unit enablement — and prints what still needs hands. `--check` reports without changing
+> anything. Everything below remains the reference for *why*.
 
 ## 0. Hardware & architecture
 
@@ -84,6 +89,14 @@ clear CMOS via the board jumper.
    ```
    `[TODO-CONFIRM]` `dock.c` targets GTK4 layer-shell; if it's GTK3, install
    `libgtk-3-dev libgtk3-layer-shell-dev` instead (see `pi-dock/README.md` §1).
+5. **Python dependency Debian doesn't package:** `set-timezone.py` imports `timezonefinder`,
+   which is **not** in Debian 13 (`python3-timezonefinder` does not exist). Without it
+   `set-timezone.timer` fails every 10 minutes:
+   ```
+   sudo python3 -m pip install --break-system-packages timezonefinder
+   ```
+   This drags in `numpy` (~20 MB) — expected. Quick check:
+   `python3 -c "import timezonefinder; print('ok')"`.
 
 ---
 
@@ -109,6 +122,16 @@ clear CMOS via the board jumper.
    **`Wind (130306)`** conversion. This is what makes the plotter *transmit* on the N2K bus
    (§5) — without it Signal K only listens. Plugin config isn't captured by `snapshot-pi.sh`,
    so it's a one-off UI setup.
+6. **Two repo-only extras that `snapshot-pi.sh` never captured** — both were missing from this doc
+   until it was audited, and neither is discoverable from the running box:
+   - **`signalk-plugins/fuel-economy`** — rolling L/NM from (port + starboard) fuel rate and SOG,
+     published to `propulsion.main.fuel.economy`. Copy into
+     `/home/pi/.signalk/node_modules/signalk-fuel-economy` and add it to the `package.json`
+     dependencies alongside `holdingtank-status`, then restart Signal K.
+   - **`signalk-zones/set-zones.py`** — writes `meta.zones` for the gauge bands. Run **once** after
+     Signal K is live; it talks to `http://localhost:3000/signalk/v1/api/vessels/self` with no auth
+     when run on the box itself: `python3 signalk-zones/set-zones.py` then restart Signal K so the
+     KIP gauges pick the zones up.
 
 ---
 
@@ -126,8 +149,14 @@ clear CMOS via the board jumper.
 sudo cp -a pi-dock/pi-config/etc/. /etc/
 sudo cp -a pi-dock/pi-config/usr/. /usr/
 sudo cp -a pi-dock/pi-config/home/. /home/
+sudo cp -a pi-dock/pi-config/var/. /var/
 sudo systemctl daemon-reload
 ```
+
+> ⚠️ Don't skip the `var/` line. `pi-dock/pi-config/var/lib/avnav/avnav_server.xml` holds the
+> AvNav server config (chart directories, port, settings) and is the one file the original
+> three-line version of this section silently dropped. `boot/` is deliberately **not** restored —
+> it's Pi `config.txt`/`cmdline.txt`, and x86 uses GRUB (§1.3).
 
 **Enable:**
 ```

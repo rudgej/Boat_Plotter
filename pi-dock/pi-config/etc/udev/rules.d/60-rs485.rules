@@ -1,0 +1,3 @@
+# Stable, human-readable names for the two onboard RS485 ports (both listen-only).
+KERNEL=="ttyS0", SYMLINK+="rs485-1"
+KERNEL=="ttyS1", SYMLINK+="rs485-2"
