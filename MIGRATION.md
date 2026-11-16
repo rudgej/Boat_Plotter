@@ -559,3 +559,33 @@ output (§5), the two listen-only RS485 inputs (§6).
 
 Note `engine-trends/SPEC.md` deliberately uses **SQLite, not InfluxDB/Grafana** — Grafana is a
 renderer, not a time-series store (§13). If Grafana is revived, decide which of the two it serves.
+
+---
+
+## 15. Backups & snapshots — after it's built
+
+**A disk image will not fit the 4 GB stick, and isn't the right artefact.** The NVMe is 128 GB and
+a byte-for-byte image needs a target at least as large as the *used* space — several GB once AvNav
+charts are aboard. Charts are also **encrypted and machine-bound**, so a restored image still needs
+re-licensing. Imaging buys little.
+
+What rebuilds this box quickly is its **configuration**:
+
+```
+sudo ./n100/snapshot-n100.sh              # -> /tmp/bossy-snapshot-YYYYMMDD-HHMM.tar.gz
+sudo ./n100/snapshot-n100.sh /media/usb   # also copy to a stick
+```
+
+A few MB, capturing units, udev, nginx, hostapd, labwc autostart, `/usr/local/bin`, Signal K
+`settings.json` + plugin configs + `applicationData` (the KIP dashboards), custom plugins, live
+gauge zones, `can0`/RS485 state, and a `MANIFEST.txt` of `apt-mark showmanual` + `npm ls -g` +
+enabled units.
+
+**Secrets are redacted, not stored** — `rclone.conf` tokens and `signalk-automation.env` passwords
+become `REDACTED`; re-run `rclone config` after a restore. Charts, manuals and media are excluded
+by design.
+
+If you *do* want a true bootable clone, the right target is the **spare 256 GB X15 NVMe** (§0) in an
+M.2 enclosure — not a USB stick.
+
+
