@@ -11,6 +11,8 @@ boat with no internet.
 | Source | <https://canable.io/builds/canable2/candlelight/canable2_fw-ba6b1dd.bin> |
 | Target | CANable 2.0, STM32G431CB, flash base `0x08000000` |
 | Result | USB `1d50:606f`, no serial port — Linux creates `can0` |
+| CAN clock | **170 MHz** (`0x0A21FE80` in the bit-timing table — G431 core clock) |
+| New USB serial | `0048004C594B500920343237` (STM32 UID; slcan was `207C3283594B`) |
 
 Verify the download before flashing:
 
@@ -30,6 +32,13 @@ sha256sum -c <<< "81e6a6754a79843f6c8620c6a88b5646abf5c9723458e22b573fdab46d934b
 <https://github.com/candle-usb/candleLight_fw> states outright that **STM32G431-based
 devices are not supported yet**. The canable.io build above is the only correct one for
 this hardware.
+
+## Talking to it in software
+
+Use `socketcan` (`can0`) — that includes `python-can` with `interface="socketcan"`. Do
+**not** use `python-can`'s `interface="gs_usb"`: this firmware reports a 170 MHz CAN clock
+and the `gs_usb` Python helper only carries hard-coded tables for 48/80 MHz, so it fails with
+*"No suitable bit timings found"*. The kernel computes timings itself and is fine.
 
 ## Going back to slcan
 

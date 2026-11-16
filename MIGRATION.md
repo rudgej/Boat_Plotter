@@ -107,7 +107,10 @@ sudo systemctl enable boatnetwork.service boatnetwork-dnsmasq.service \
 | **candlelight** ← current | `1d50:606f` | `can0` via kernel `gs_usb`, **no daemon** | Signal K N2K **and** CAN analysis |
 | slcan (old) | `16d0:117e` | `/dev/ttyACM0`, needs `slcand` | serial-only CAN tools on other OSes |
 
-In candlelight mode there is **no `/dev/ttyACM*`** — that is correct, not a fault.
+In candlelight mode there is **no `/dev/ttyACM*`** — that is correct, not a fault. The
+**USB serial number changes too**: `207C3283594B` (the slcan firmware's string) becomes the
+STM32 96-bit UID `0048004C594B500920343237`. Another reason the udev rule keys off
+`DRIVERS=="gs_usb"` rather than a serial or VID:PID.
 
 1. **udev rule** — committed at `pi-dock/pi-config/etc/udev/rules.d/70-canable.rules`,
    so §4's `cp -a pi-dock/pi-config/etc/. /etc/` installs it. It matches the *driver*, not a
@@ -157,6 +160,14 @@ candump -L can0 | analyzer -json | jq .     # canboat PGN decode
 canbusload can0@250000
 ```
 Wireshark/tshark on `can0` works too (NMEA 2000 dissector included).
+
+⚠️ Address it as `socketcan` (`can0`), **never** via `python-can`'s `interface="gs_usb"`.
+The firmware declares a **170 MHz** CAN clock (correct for the G431 — it is in the binary as
+`0x0A21FE80` in the bit-timing table), and the `gs_usb` Python helper only carries hard-coded
+timing tables for 48 MHz and 80 MHz clocks, so it dies with *"No suitable bit timings found"*.
+The Linux kernel instead computes timings from the firmware's own constraints
+(BRP 1–512, TSEG1 2–256, TSEG2 2–128), which resolves 250 kbit/s to BRP 40 / TSEG1 14 /
+TSEG2 2 = 88.2 % sample point. `can0` at 250 kbit/s is fine; only that Python path is not.
 
 **Switching back to `slcan`** — only needed if a CAN tool on a *different* machine speaks
 serial rather than socketcan. Hold **BOOT**, plug in, then
