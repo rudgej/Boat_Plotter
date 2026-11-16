@@ -457,3 +457,27 @@ fully running and verified:
   Build `engine-trends.py` + systemd unit once Signal K is live and the two engines' N2K paths are
   visible in the `self` tree (instance→Port/Starboard mapping to be confirmed on the boat).
 - Grafana / InfluxDB charting — optional, only if month-scale visual trends are wanted later.
+
+---
+
+## 14. Open items — audited 2026-11-16, not yet specified
+
+These were part of the intended stack but are **absent from this repo**, so they cannot be rebuilt
+from it alone. They were discussed in the earlier (Pi-era) chat; the answers need to come from there
+before the build day, or they get re-invented under time pressure.
+
+| Item | State in repo | What's missing |
+|---|---|---|
+| **Dropbox sync** | **nothing at all** — zero references | what was synced, which direction, which mechanism (client / rclone / API), how it authenticated |
+| **Grafana** | only `launch-grafana.sh`, which opens `http://localhost:3001` with class `grafana-kiosk` | how it was installed, its data source (InfluxDB?), why port **3001** not 3000, and the dashboard definitions |
+| **KIP dashboards** | **one** of ~5: `applicationData/users/boat/kip/11.0.0.json` | the other four were lost with the Pi; contents unknown |
+| **Gauge zones** | `signalk-zones/set-zones.py` exists | whether the script was ever used, or zones were set by hand in the admin UI |
+| **fuel-economy** | code + install steps (§2) | instance numbers for port/starboard, required settings, whether it was ever verified |
+
+Everything else in the target stack is covered elsewhere in this document:
+Debian (§1), Signal K (§2), AvNav (§3), the dock / bottom-bar apps (`dock.c` + `launch-*.sh` + labwc
+autostart, §7), Shelly automation (§9), engine trends (`engine-trends/SPEC.md`, §13), N2K input and
+output (§5), the two listen-only RS485 inputs (§6).
+
+Note `engine-trends/SPEC.md` deliberately uses **SQLite, not InfluxDB/Grafana** — Grafana is a
+renderer, not a time-series store (§13). If Grafana is revived, decide which of the two it serves.
