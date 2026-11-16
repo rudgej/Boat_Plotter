@@ -483,27 +483,52 @@ that out now, not at anchor.
 
 ## 11. Remote access (Tailscale)
 
-Install **Tailscale** (WireGuard mesh VPN) so the box is reachable from anywhere — no port
-forwarding, and it keeps working through marina Wi-Fi / phone hotspots where the uplink IP
-changes or isn't routable:
+Install **Tailscale** — a WireGuard mesh VPN. This is the right tool for a boat: **no port
+forwarding**, no static IP, and it survives marina Wi-Fi and 4G where the uplink address changes
+constantly or sits behind carrier-grade NAT.
 
 ```
 curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up            # add --ssh if you want key-based SSH via the tailnet
+sudo tailscale up --ssh --advertise-routes=192.168.10.0/24
 ```
 
-Log in at **login.tailscale.com**, then `tailscale ip` prints a stable `100.x.y.z` address.
-From any device on your tailnet:
+Log in at **login.tailscale.com**, then `tailscale ip -4` prints a stable `100.x.y.z` address.
 
-- Signal K → `http://<tailscale-ip>:3000`
-- AvNav    → `http://<tailscale-ip>:8080`
-- SSH      → `ssh pi@<tailscale-ip>`
+| From any device on your tailnet | |
+|---|---|
+| Signal K | `http://100.x.y.z:3000` |
+| AvNav | `http://100.x.y.z:8080` |
+| SSH | `ssh pi@100.x.y.z` (or `ssh pi@bossy` with MagicDNS) |
+| Shelly / instruments | `192.168.10.151` etc., via the advertised subnet |
 
-Notes:
+**`--advertise-routes=192.168.10.0/24`** makes the box a subnet router, so you can reach the
+BoatNetwork AP's clients — the Shelly, anything else on that side — without a separate tunnel.
+Two follow-ups matter:
 
-- This is a **system service**, not a Signal K plugin — it sits underneath everything, so it
-  also gives you remote access for RS485/CAN/automation debugging.
-- Free for personal use; runs as a systemd service and survives reboots.
+1. **Approve the route** in the admin console (*Machines → bossy → Edit route settings*) or it is
+   advertised but not used.
+2. On each client you want to use it from: `tailscale up --accept-routes` (macOS app: *Use Tailscale
+   subnets*).
+
+### The one setting people forget
+
+**Disable key expiry for this node** in the admin console. The default is **180 days**, and an
+unattended boat would silently drop off the tailnet mid-season — exactly when you need it. Machine
+settings → *Disable key expiry*.
+
+### Notes
+
+- A **system service**, not a Signal K plugin — it sits underneath everything, so it also gives you
+  remote access for RS485/CAN/automation debugging.
+- Free for personal use (up to 100 devices); survives reboots.
+- Poor uplink: Tailscale falls back to **DERP** relays. It still works, just slower — fine for
+  Signal K and SSH, not for streaming.
+- **Do not enable Tailscale Funnel** on this box. It publishes to the public internet, which is the
+  thing the tailnet exists to avoid. Signal K's own security (§2) stays the only auth in front of
+  :3000.
+- `--accept-dns=false` is worth adding if MagicDNS interferes with the box resolving local names.
+- If Tailscale ever becomes unsuitable, the equivalents are **ZeroTier** or **NetBird** — same idea,
+  different account. WireGuard by hand needs a reachable endpoint, which a roaming boat does not have.
 
 ---
 

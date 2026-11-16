@@ -59,7 +59,20 @@ else
     run apt-get install -y avnav || warn "avnav failed - retry: apt install -y python3-bluez && apt install -y avnav"
 fi
 
-say "4. remaining packages"
+say "4. Tailscale (remote access, MIGRATION 11)"
+if command -v tailscale >/dev/null 2>&1; then
+    ok "tailscale present: $(tailscale version 2>/dev/null | head -1)"
+else
+    run bash -c 'curl -fsSL https://tailscale.com/install.sh | sh'
+fi
+if tailscale status >/dev/null 2>&1; then
+    ok "already logged in"
+else
+    warn "log in once:  sudo tailscale up --ssh --advertise-routes=192.168.10.0/24"
+    warn "then approve the route AND disable key expiry in the admin console"
+fi
+
+say "5. remaining packages"
 run apt-get install -y rclone nginx
 ok "rclone (Dropbox manuals) and nginx (manuals on :8081)"
 
