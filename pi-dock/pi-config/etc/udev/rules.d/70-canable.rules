@@ -1,0 +1,3 @@
+# CANable2 -> stable can0. Match the driver, not a VID:PID, so a firmware
+# reflash (candlelight <-> slcan) or a replacement dongle keeps working.
+ACTION=="add", SUBSYSTEM=="net", DRIVERS=="gs_usb", NAME="can0"

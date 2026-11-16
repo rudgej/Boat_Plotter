@@ -8,7 +8,8 @@
 - **CWWK Fanless Industrial Mini PC** — Intel **N100**, **8 GB RAM**, **128 GB M.2 NVMe** (included),
   **2× DB9 COM (RS232/RS485, jumper-switchable)**, dual **2.5 GbE i226-V**, 2× HDMI + DP + USB-C,
   SIM slot, M.2 E-key, **12 V DC in**.
-- **CAN / NMEA 2000:** CANable USB-CAN, **candlelight firmware** (`gs_usb`).
+- **CAN / NMEA 2000:** CANable2 USB-CAN (STM32G431CB), **candlelight** firmware → kernel
+  `gs_usb` → `can0`. Already re-flashed from slcan; see §5.
 - **Second Wi-Fi:** the AIC8800 USB dongle (BoatNetwork AP).
 - **Display:** existing HDMI touchscreen (ILITEK 222A:0001) — USB touch + HDMI.
 - **Spare:** old 256 GB X15 NVMe is *not* boot; keep as spare.
@@ -92,22 +93,78 @@ sudo systemctl enable boatnetwork.service boatnetwork-dnsmasq.service \
 
 ---
 
-## 5. CAN / NMEA 2000 (CANable replaces the MCP2515 HAT)
+## 5. CAN / NMEA 2000 (CANable2 replaces the MCP2515 HAT)
 
-1. Stable name — udev rule (matches the `gs_usb` driver, robust to VID:PID variation):
+> **Adapter is already provisioned — nothing to flash on the N100.** The CANable2
+> (Openlight Labs, STM32G431CB, s/n `207C3283594B`) has been re-flashed from `slcan` to
+> **candlelight**, so Linux sees a `gs_usb` device and the kernel creates `can0` by itself.
+> The steps below only pin the name, confirm it, and wire it up.
+
+**How it presents itself in each mode:**
+
+| Mode | USB ID | Linux sees | Use |
+|---|---|---|---|
+| **candlelight** ← current | `1d50:606f` | `can0` via kernel `gs_usb`, **no daemon** | Signal K N2K **and** CAN analysis |
+| slcan (old) | `16d0:117e` | `/dev/ttyACM0`, needs `slcand` | serial-only CAN tools on other OSes |
+
+In candlelight mode there is **no `/dev/ttyACM*`** — that is correct, not a fault.
+
+1. **udev rule** — committed at `pi-dock/pi-config/etc/udev/rules.d/70-canable.rules`,
+   so §4's `cp -a pi-dock/pi-config/etc/. /etc/` installs it. It matches the *driver*, not a
+   VID:PID, so a reflash or a replacement dongle still lands on `can0`:
    ```
-   # /etc/udev/rules.d/70-canable.rules
    ACTION=="add", SUBSYSTEM=="net", DRIVERS=="gs_usb", NAME="can0"
    ```
    `sudo udevadm control --reload`
 2. `can0-nmea2000.service` is **already generic**
    (`ip link set can0 up type can bitrate 250000 restart-ms 100`) — no edit.
-3. Edit `/usr/local/bin/can-watchdog.sh`: **delete the MCP2515 IRQ-storm block**
-   (the section grepping `/proc/interrupts` for `spi0.0`). Keep missing / not-UP / BUS-OFF checks.
-4. Reboot or `sudo udevadm trigger`, then:
+3. `/usr/local/bin/can-watchdog.sh` still contains an MCP2515 IRQ-storm block (greps
+   `/proc/interrupts` for `spi0.0`). On the N100 that grep returns nothing, the arithmetic
+   collapses to `0`, and the check never fires — **harmless, leave it or delete it**. The
+   missing / not-UP / BUS-OFF checks above it are what matter, and they work unchanged.
+4. **Signal K → N2K data connection.** `settings.json` is *not* captured by
+   `snapshot-pi.sh`, so this is the one thing that must be recreated by hand. Once:
+   *Data Connections → Add → NMEA 2000*, then:
+   - **Connection type:** `SocketCAN`
+   - **CAN interface:** `can0`
+   - leave the rest at defaults → **Enable** → **Save**.
+
+   Sanity check ~10 s later: `curl -s localhost:3000/signalk/v1/api/vessels/self/navigation`
+   should be updating.
+5. Reboot or `sudo udevadm trigger`, then:
    ```
    ip -details link show can0   # expect state UP, can state ERROR-ACTIVE, bitrate 250000
+   candump -t d can0 | head -5  # raw N2K frames
    ```
+   If `can0` is missing → `lsusb | grep 1d50:606f` (adapter not in candlelight mode).
+   If it is BUS-OFF on a live bus → wiring/termination, see below.
+
+**Termination and wiring — check before the first power-up on the boat**
+
+- The CANable2 has an **onboard 120 Ω switch**: **towards the board edge = OFF**.
+  This adapter is a *drop* onto an already-terminated NMEA 2000 backbone, so it **must be
+  OFF**. CAN_H↔CAN_L across the unpowered backbone should read **~60 Ω**; ~120 Ω means a
+  missing terminator, ~40 Ω means three.
+- NMEA 2000 micro-C: **pin 4 = CAN_H (white)**, **pin 5 = CAN_L (blue)**,
+  **pin 2 = NET-S / GND (black)**. Do **not** connect pin 3 (12 V+). The CANable2 is
+  **non-isolated**, so carry NET-S through to its GND terminal.
+
+**Analysing traffic while Signal K is running.** `socketcan` is multi-listener, so you do
+not need to stop Signal K to sniff:
+```
+candump -L can0                             # log format
+candump -L can0 | analyzer -json | jq .     # canboat PGN decode
+canbusload can0@250000
+```
+Wireshark/tshark on `can0` works too (NMEA 2000 dissector included).
+
+**Switching back to `slcan`** — only needed if a CAN tool on a *different* machine speaks
+serial rather than socketcan. Hold **BOOT**, plug in, then
+<https://canable.io/updater/canable2.html> → *slcan with FD support* → Connect and Update
+(~30 s, reversible). ⚠️ Do **not** use mainline `candle-usb/candleLight_fw`: it explicitly
+does not support STM32G431 yet. The canable.io *candlelight* build for CANable 2.0 is the
+only correct one for this hardware — a verified copy plus the re-flash commands live in
+[`pi-dock/canable2/`](pi-dock/canable2/README.md) so it works offline on the boat.
 
 ---
 

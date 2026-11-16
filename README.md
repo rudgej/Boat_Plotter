@@ -4,7 +4,7 @@ Configuration, automation and migration for the boat's navigation/plotter box.
 
 ## Layout
 
-- **`pi-dock/`** — the live plotter config (Signal K, AvNav, KIP, dock, BoatNetwork AP, Shelly automation, watchdogs). Full docs in **`pi-dock/README.md`**.
+- **`pi-dock/`** — the live plotter config (Signal K, AvNav, KIP, dock, BoatNetwork AP, Shelly automation, watchdogs). Full docs in **`pi-dock/README.md`**. `pi-dock/canable2/` holds the offline CANable2 **candlelight** firmware and re-flash steps.
 - **`MIGRATION.md`** — the step-by-step plan to rebuild on the **CWWK N100 x86** box (Debian 13 + Signal K + AvNav, no OpenPlotter/OpenCPN). Start here when the new hardware arrives.
 - **`seakeeper-esp/`** — ESP32 firmware for the Seakeeper interface.
 - **`signalk-zones/`**, **`signalk-plugins/`** — extra Signal K bits (zones setter, fuel-economy plugin).

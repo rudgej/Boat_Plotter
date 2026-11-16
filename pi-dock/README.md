@@ -126,15 +126,24 @@ SSID `BoatNetwork` / pass `B0ssywifi`, Pi is `192.168.10.1`, dnsmasq hands out
 
 ## 6. CAN / NMEA 2000 reliability
 
-`can0` is an MCP2515 SPI interface at 250 kbit/s. Two things keep it alive:
+On the Pi, `can0` was an MCP2515 SPI interface at 250 kbit/s. On the **N100** it is a
+**CANable2** in candlelight mode, i.e. a kernel `gs_usb` socketcan interface pinned to
+`can0` by `etc/udev/rules.d/70-canable.rules` — see `MIGRATION.md` §5. The reliability
+plumbing is unchanged:
 
 - **Boot ordering** — `can0-nmea2000.service` sets `Before=signalk.service`,
   and `signalk.service.d/override.conf` adds `Wants=`/`After=` for it, so Signal K
   never starts before the CAN socket exists.
 - **`can-watchdog`** — a 10 s timer checks `ip -details link show can0` and
   restarts both `can0-nmea2000` and `signalk` if the interface is missing, not
-  UP, or BUS-OFF; it also detects an MCP2515 IRQ storm (IRQ count far exceeding
-  RX frames) and restarts both. Logs to `/var/log/can-watchdog.log`.
+  UP, or BUS-OFF. Logs to `/var/log/can-watchdog.log`.
+
+`can-watchdog.sh` in this repo still carries the **MCP2515 IRQ-storm block** (it greps
+`/proc/interrupts` for `spi0.0`). On the N100 that block is inert — `spi0.0` does not exist,
+so it evaluates to zero and never restarts anything. Deleting it is cosmetic, not required.
+
+Because `can0` is socketcan, you can sniff alongside Signal K without stopping it:
+`candump -L can0`, or `candump -L can0 | analyzer -json` for decoded PGNs.
 
 The ESP32 wind sensor also feeds Signal K over NMEA 0183/UDP on port **10110**
 (see the repo-root README).
