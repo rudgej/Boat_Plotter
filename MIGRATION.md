@@ -116,12 +116,24 @@ clear CMOS via the board jumper.
 
 ## 2. Signal K
 
-1. Install per **signalk.org** (verify current URL; standard form):
+1. **Node 22 first — this is a hard prerequisite, not an optional upgrade.** Debian 13 ships
+   **nodejs 20.19.2**, but Signal K **2.37 requires Node ≥ 22** (`engines: node >=22`), so
+   installing Signal K from Debian's Node simply fails. Add the NodeSource repo:
    ```
-   curl -sL https://raw.githubusercontent.com/SignalK/signalk-server/master/bin/install.sh | sudo bash
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+   sudo apt install -y nodejs
+   node --version        # must be v22.x or newer
    ```
-   (port **3000**)
-2. Restore data (from this repo checkout):
+   This also fixes `inject-kip.mjs` (§2.10), which needs a global `WebSocket` that Node 20 lacks.
+
+2. Install Signal K from npm:
+   ```
+   sudo npm install -g signalk-server --allow-scripts=@canboat/canboatjs
+   sudo signalk-server-setup      # interactive: port 3000, enables the service
+   ```
+   ⚠️ The old `raw.githubusercontent.com/.../bin/install.sh` one-liner **no longer exists** (404).
+   npm is now the supported path.
+3. Restore data (from this repo checkout):
    ```
    sudo cp -a pi-dock/pi-config/home/pi/.signalk/. /home/pi/.signalk/
    sudo chown -R pi:pi /home/pi/.signalk
@@ -129,10 +141,10 @@ clear CMOS via the board jumper.
    Restores KIP dashboards (`applicationData/users/boat/kip/11.0.0.json`), plugin configs
    (`derived-data.json`, `holdingtank-status.json`, `signalk-shelly2.json`), and the
    `holdingtank-status` plugin code.
-3. Register `holdingtank-status` in `/home/pi/.signalk/package.json` dependencies, restart signalk.
-4. First login: create user **`boat`** / **`bossy`** (admin).
+4. Register `holdingtank-status` in `/home/pi/.signalk/package.json` dependencies, restart signalk.
+5. First login: create user **`boat`** / **`bossy`** (admin).
    Recreate `/etc/signalk-automation.env` from `signalk-automation.env.example` (chmod 600).
-5. **Install KIP** — the kiosk UI the dock's "Engine" button opens, served by Signal K itself at
+6. **Install KIP** — the kiosk UI the dock's "Engine" button opens, served by Signal K itself at
    `/@mxtommy/kip/`. From *Appstore → Webapps* install **KIP** (mxtommy); it lands in
    `~/.signalk/node_modules` and needs no separate server. Then:
    - open `http://localhost:3000/@mxtommy/kip/` and confirm the app loads;
@@ -140,11 +152,11 @@ clear CMOS via the board jumper.
      restored by step 8 below;
    - the other ~3 dashboards were lost with the Pi — rebuild them by hand in the KIP UI (see
      `pi-dock/kip/DASHBOARDS.md` for what existed).
-6. Install **`signalk-to-nmea2000`** from *Appstore → Signal K plugins*, and enable its
+7. Install **`signalk-to-nmea2000`** from *Appstore → Signal K plugins*, and enable its
    **`Wind (130306)`** conversion. This is what makes the plotter *transmit* on the N2K bus
    (§5) — without it Signal K only listens. Plugin config isn't captured by `snapshot-pi.sh`,
    so it's a one-off UI setup.
-7. **Two repo-only extras that `snapshot-pi.sh` never captured** — both were missing from this doc
+8. **Two repo-only extras that `snapshot-pi.sh` never captured** — both were missing from this doc
    until it was audited, and neither is discoverable from the running box:
    - **`signalk-plugins/fuel-economy`** — rolling L/NM from (port + starboard) fuel rate and SOG,
      published to `propulsion.main.fuel.economy`. Copy into
@@ -154,7 +166,7 @@ clear CMOS via the board jumper.
      Signal K is live; it talks to `http://localhost:3000/signalk/v1/api/vessels/self` with no auth
      when run on the box itself: `python3 signalk-zones/set-zones.py` then restart Signal K so the
      KIP gauges pick the zones up.
-8. **Plugin inventory.** Restoring `plugin-config-data/` restores a plugin's *settings* — it does
+9. **Plugin inventory.** Restoring `plugin-config-data/` restores a plugin's *settings* — it does
    **not** install the plugin. Each of these must be installed, then Signal K restarted:
 
    | Plugin | From | Post-install |
@@ -162,11 +174,11 @@ clear CMOS via the board jumper.
    | `signalk-to-nmea2000` | Appstore | enable **Wind (130306)** — this is the N2K *transmit* path (§5) |
    | `signalk-derived-data` | Appstore | true wind etc.; settings come back from `derived-data.json` |
    | `signalk-shelly2` | Appstore | **re-apply the `units:bool` patch** (§9) after every reinstall |
-   | `holdingtank-status` | **this repo** (`pi-config/home/pi/.signalk/node_modules/`) | add to `package.json` deps (§2.3) |
+   | `holdingtank-status` | **this repo** (`pi-config/home/pi/.signalk/node_modules/`) | add to `package.json` deps (§2.4) |
    | `signalk-fuel-economy` | **this repo** (`signalk-plugins/`) | copy in + add to `package.json` deps |
 
    Only the first three are downloadable; the last two are custom and exist only here.
-9. **Restore the `Engine` KIP dashboard** (the other survivor — the `default` helm dashboard comes
+10. **Restore the `Engine` KIP dashboard** (the other survivor — the `default` helm dashboard comes
    back with `.signalk` above). This one does **not** live in `.signalk`; it's `pi-dock/kip-config.json`,
    pushed into the KIP kiosk's Chromium *localStorage* over CDP. Nothing in §4 restores it, because
    the files sit in `pi-dock/`, not in `pi-config/`:
@@ -195,9 +207,19 @@ clear CMOS via the board jumper.
 
 ## 3. AvNav (no OpenCPN)
 
-1. Per **avnav.eu** docs (add their Debian repo) → `sudo apt install avnav` (port **8080**).
-2. Install the **ochartsng** plugin and **re-license the chart set** (fingerprint is machine-bound;
-   this is the one unavoidable re-activation).
+1. AvNav is not in Debian — add the **oss.boating** repo (this is the real one; the
+   `wellenvogel.net/software/avnav/deb` path some guides cite is **404**):
+   ```
+   curl -fsSL https://www.free-x.de/debian/oss.boating.gpg.key \
+     | gpg --dearmor | sudo tee /usr/share/keyrings/oss.boating.gpg >/dev/null
+   echo "deb [signed-by=/usr/share/keyrings/oss.boating.gpg] https://www.free-x.de/debian trixie main contrib non-free" \
+     | sudo tee /etc/apt/sources.list.d/boating.list
+   sudo apt update && sudo apt install -y avnav
+   ```
+   Suite **`trixie`** carries `amd64`. Port **8080**.
+2. If it fails on `python3-bluez`: `sudo apt install -y python3-bluez`.
+3. Install the **ochartsng** plugin and **re-license the chart set** (fingerprint is machine-bound,
+   and the charts are encrypted — this is the one unavoidable re-activation).
 
 ---
 
@@ -413,14 +435,14 @@ confirm with `ip link` and adjust `boatnetwork-up.sh` if the name differs.
 
 ## 9. Shelly automation
 
-- **Install `signalk-shelly2` from the Appstore first** (see the plugin inventory in §2.8). Restoring
+- **Install `signalk-shelly2` from the Appstore first** (see the plugin inventory in §2.9). Restoring
   `plugin-config-data/signalk-shelly2.json` only brings back its settings, not the plugin.
 - Then re-apply the **`units:bool` patch** to `signalk-shelly2`'s `dist/components/SwitchBase.js`
   (one-line removal; `pi-dock/signalk-shelly2-state-units.patch`). This must be repeated after
   **every** plugin reinstall — an update silently reverts it and the switches report wrong units.
 - Shelly devices unchanged (`.151` holding tank, `.142` cockpit light). Both daemons
   (`holding-tank-dump.py`, `cockpit-light.py`) use only Python's stdlib and need no pip packages;
-  `shelly-watchdog.sh` uses `curl`. Credentials come from `/etc/signalk-automation.env` (§2.4).
+  `shelly-watchdog.sh` uses `curl`. Credentials come from `/etc/signalk-automation.env` (§2.5).
 
 ---
 
@@ -518,14 +540,14 @@ unknown is marked `[TODO-CONFIRM]` and must be settled on the boat.
 | **Grafana** | `pi-dock/grafana/README.md` — port **3001** (3000 is Signal K); install, data source and dashboard definitions `[TODO-CONFIRM]`, none captured |
 | **KIP dashboards** | two survive and are committed: **`Engine`** (`kip-config.json`) and **`default`** (`11.0.0.json`); the other ~3 are lost — `pi-dock/kip/DASHBOARDS.md` |
 | **Gauge zones** | `set-zones.py` already holds the real paths + bands — `signalk-zones/ZONES.md`; whether it was run on the Pi `[TODO-CONFIRM]` (idempotent, run once) |
-| **fuel-economy** | paths documented in §2.8; instance mapping `[TODO-CONFIRM]` |
+| **fuel-economy** | paths documented in §2.9; instance mapping `[TODO-CONFIRM]` |
 
 **Review note (verified against the repo, not taken on trust):** the handover's technical claims
 all check out — `kip-config.json` really does hold the four `propulsion.port.*` gauges; `11.0.0.json`
 really is 10 numeric / 6 linear / 1 compass / 1 wind-steer / 1 boolean / 2 text; the fuel-economy
 plugin really does read `propulsion.{port,starboard}.fuel.rate` (m³/s, converted in-plugin to L/h)
 and publish over `propulsion.main.fuel.economy` with a 30 s window and 0.5 m/s SOG floor; and the
-`ZONES.md` bands match `set-zones.py` exactly. One gap it introduced has been closed in §2.9: the
+`ZONES.md` bands match `set-zones.py` exactly. One gap it introduced has been closed in §2.10: the
 `Engine` dashboard lives in `pi-dock/kip-config.json` and is injected via CDP, so it needed an
 explicit restore step — and `chromium`/`nodejs` were missing from the package list entirely (§1.4),
 despite every kiosk launcher calling `chromium`.
