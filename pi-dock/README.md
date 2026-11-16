@@ -145,6 +145,10 @@ so it evaluates to zero and never restarts anything. Deleting it is cosmetic, no
 Because `can0` is socketcan, you can sniff alongside Signal K without stopping it:
 `candump -L can0`, or `candump -L can0 | analyzer -json` for decoded PGNs.
 
+The interface is brought up **normal, not listen-only**, because the plotter also *transmits*:
+wind data goes out as PGN 130306 via the `signalk-to-nmea2000` plugin. See `MIGRATION.md` §5.
+Verified throughput on this adapter: 100 % TX-complete at 50 Hz with concurrent RX.
+
 The ESP32 wind sensor also feeds Signal K over NMEA 0183/UDP on port **10110**
 (see the repo-root README).
 

@@ -32,7 +32,7 @@
    sudo apt update && sudo apt install -y git curl wget htop lm-sensors \
      hostapd dnsmasq network-manager labwc kanshi squeekboard pcmanfm \
      libgtk-4-dev libgtk4-layer-shell-dev gcc pkg-config python3 python3-pip \
-     bluez pipewire pipewire-pulse
+     bluez pipewire pipewire-pulse can-utils jq
    ```
    `[TODO-CONFIRM]` `dock.c` targets GTK4 layer-shell; if it's GTK3, install
    `libgtk-3-dev libgtk3-layer-shell-dev` instead (see `pi-dock/README.md` §1).
@@ -57,6 +57,10 @@
 3. Register `holdingtank-status` in `/home/pi/.signalk/package.json` dependencies, restart signalk.
 4. First login: create user **`boat`** / **`bossy`** (admin).
    Recreate `/etc/signalk-automation.env` from `signalk-automation.env.example` (chmod 600).
+5. Install **`signalk-to-nmea2000`** from *Appstore → Signal K plugins*, and enable its
+   **`Wind (130306)`** conversion. This is what makes the plotter *transmit* on the N2K bus
+   (§5) — without it Signal K only listens. Plugin config isn't captured by `snapshot-pi.sh`,
+   so it's a one-off UI setup.
 
 ---
 
@@ -169,6 +173,29 @@ The Linux kernel instead computes timings from the firmware's own constraints
 (BRP 1–512, TSEG1 2–256, TSEG2 2–128), which resolves 250 kbit/s to BRP 40 / TSEG1 14 /
 TSEG2 2 = 88.2 % sample point. `can0` at 250 kbit/s is fine; only that Python path is not.
 
+**Transmitting onto the bus — the plotter is a node, not just a tap**
+
+`can0` is brought up as a normal interface (not listen-only), so `canboatjs` can put frames
+on the bus. This was verified on the actual adapter: **100 % TX-complete at 5 Hz and again at
+50 Hz while simultaneously receiving ~51 f/s, with zero error frames.**
+
+Wire it up with the **`signalk-to-nmea2000`** plugin (Signal K → Appstore). Its built-in
+`Wind (130306)` conversion maps `environment.wind.angleApparent` + `environment.wind.speedApparent`
+to PGN **130306**, priority **2**, reference **Apparent**, broadcast to 255. The
+`windTrueGround` / `windTrueWater` conversions cover the true-wind variants.
+
+Two behaviours that matter:
+
+- **N2K-sourced data is never re-transmitted.** The plugin deliberately drops any value whose
+  source is NMEA 2000, so it can't echo another instrument's PGN back onto the bus. Wind must
+  therefore enter Signal K from a non-N2K source — here the **ESP32 wind sensor over NMEA 0183/UDP
+  10110**, which qualifies. Never enable *"Also send data that came from NMEA 2000"*.
+  `[TODO-CONFIRM]` that the sensor's sentences land as `environment.wind.angleApparent` /
+  `speedApparent` (MWV does; VWR gives true wind, which needs the `windTrueGround` conversion).
+- **The plotter claims an address and becomes a visible node.** `canboatjs` performs ISO Address
+  Claim (PGN 60928, using null address 254 while claiming), so other instruments will see the
+  plotter as a real device. Address clashes show up under *Data → Source Discovery*.
+
 **Switching back to `slcan`** — only needed if a CAN tool on a *different* machine speaks
 serial rather than socketcan. Hold **BOOT**, plug in, then
 <https://canable.io/updater/canable2.html> → *slcan with FD support* → Connect and Update
@@ -248,7 +275,13 @@ sudo systemctl status signalk avnav can0-nmea2000
 ip -details link show can0
 curl -s localhost:3000/signalk/v1/api/vessels/self | head
 curl -sI localhost:8080 | head -1
+candump -t d can0 | grep -m5 '"130306"\|130306'   # wind PGNs the plotter transmits
 ```
+For the last one, cross-check that PGN 130306 is appearing with a **source address other than
+the instruments'** — that's the plotter's own claimed address, and it proves the TX path end to
+end. If it never appears, check the `signalk-to-nmea2000` plugin's `Wind (130306)` conversion is
+enabled and that wind is arriving from a non-N2K source (see §5).
+
 Then leave it idle 24–48 h. No 5V rail, no HAT, no Pi PMIC — the soak should simply pass.
 
 ---
