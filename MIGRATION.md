@@ -145,6 +145,13 @@ clear CMOS via the board jumper.
 
    Only the first three are downloadable; the last two are custom and exist only here.
 
+   `signalk-fuel-economy` reads `propulsion.port.fuel.rate` and `propulsion.starboard.fuel.rate`
+   (m³/s, summed) plus `navigation.speedOverGround`, and publishes `propulsion.main.fuel.economy`
+   (L/NM) over a rolling 30 s window, suppressed below ~1 kn (0.5 m/s SOG). It therefore requires the
+   two engines at the **named** instances `propulsion.port` / `propulsion.starboard` — if the N2K
+   gateway exposes numeric instances (`propulsion.0` / `propulsion.1`), map them accordingly. No
+   plugin settings exist; whether it was ever verified against live data is `[TODO-CONFIRM]`.
+
 ---
 
 ## 3. AvNav (no OpenCPN)
@@ -460,19 +467,18 @@ fully running and verified:
 
 ---
 
-## 14. Open items — audited 2026-11-16, not yet specified
+## 14. Open items — audited 2026-11-16, gaps now documented
 
-These were part of the intended stack but are **absent from this repo**, so they cannot be rebuilt
-from it alone. They were discussed in the earlier (Pi-era) chat; the answers need to come from there
-before the build day, or they get re-invented under time pressure.
+What was missing from the repo is now documented (new files) or pinned down; what remains genuinely
+unknown is marked `[TODO-CONFIRM]` and must be settled on the boat.
 
-| Item | State in repo | What's missing |
-|---|---|---|
-| **Dropbox sync** | **nothing at all** — zero references | what was synced, which direction, which mechanism (client / rclone / API), how it authenticated |
-| **Grafana** | only `launch-grafana.sh`, which opens `http://localhost:3001` with class `grafana-kiosk` | how it was installed, its data source (InfluxDB?), why port **3001** not 3000, and the dashboard definitions |
-| **KIP dashboards** | **one** of ~5: `applicationData/users/boat/kip/11.0.0.json` | the other four were lost with the Pi; contents unknown |
-| **Gauge zones** | `signalk-zones/set-zones.py` exists | whether the script was ever used, or zones were set by hand in the admin UI |
-| **fuel-economy** | code + install steps (§2) | instance numbers for port/starboard, required settings, whether it was ever verified |
+| Item | Resolution |
+|---|---|
+| **Dropbox sync** | `pi-dock/dropbox/README.md` — a **manuals** sync only (rclone, one-way Dropbox → local, deferred, never implemented on the Pi) |
+| **Grafana** | `pi-dock/grafana/README.md` — port **3001** (3000 is Signal K); install, data source and dashboard definitions `[TODO-CONFIRM]`, none captured |
+| **KIP dashboards** | two survive and are committed: **`Engine`** (`kip-config.json`) and **`default`** (`11.0.0.json`); the other ~3 are lost — `pi-dock/kip/DASHBOARDS.md` |
+| **Gauge zones** | `set-zones.py` already holds the real paths + bands — `signalk-zones/ZONES.md`; whether it was run on the Pi `[TODO-CONFIRM]` (idempotent, run once) |
+| **fuel-economy** | paths documented in §2.7; instance mapping `[TODO-CONFIRM]` |
 
 Everything else in the target stack is covered elsewhere in this document:
 Debian (§1), Signal K (§2), AvNav (§3), the dock / bottom-bar apps (`dock.c` + `launch-*.sh` + labwc
