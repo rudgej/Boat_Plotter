@@ -56,6 +56,24 @@ echo "==> writing (this takes a few minutes)"
 sudo dd if="$ISO" of="/dev/r$DEV" bs=4m status=progress || die "dd failed"
 sync
 
+echo "==> reading back and verifying (another minute)"
+SRC_SHA="$(shasum -a 256 "$ISO" | awk '{print $1}')"
+ISO_BYTES="$(stat -f%z "$ISO")"
+# dd one block past the end, then truncate to the exact ISO length, so the
+# hash covers exactly the image bytes. Guard against an empty read: hashing
+# nothing yields e3b0c442... and would compare equal to another empty read.
+DEV_SHA="$(dd if="/dev/r$DEV" bs=4m count=$(( ISO_BYTES / 4194304 + 1 )) 2>/dev/null \
+           | head -c "$ISO_BYTES" | shasum -a 256 | awk '{print $1}')"
+if [[ -z "$DEV_SHA" || "$DEV_SHA" == e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ]]; then
+    die "read-back returned no data - cannot confirm the write"
+fi
+if [[ "$DEV_SHA" != "$SRC_SHA" ]]; then
+    echo "  source: $SRC_SHA"
+    echo "  stick : $DEV_SHA"
+    die "read-back mismatch - reflash, the stick may be failing"
+fi
+echo "    ok - stick matches the ISO byte-for-byte"
+
 echo "==> ejecting"
 diskutil eject "/dev/$DEV" || true
 
