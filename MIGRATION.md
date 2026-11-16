@@ -132,6 +132,18 @@ clear CMOS via the board jumper.
      Signal K is live; it talks to `http://localhost:3000/signalk/v1/api/vessels/self` with no auth
      when run on the box itself: `python3 signalk-zones/set-zones.py` then restart Signal K so the
      KIP gauges pick the zones up.
+7. **Plugin inventory.** Restoring `plugin-config-data/` restores a plugin's *settings* — it does
+   **not** install the plugin. Each of these must be installed, then Signal K restarted:
+
+   | Plugin | From | Post-install |
+   |---|---|---|
+   | `signalk-to-nmea2000` | Appstore | enable **Wind (130306)** — this is the N2K *transmit* path (§5) |
+   | `signalk-derived-data` | Appstore | true wind etc.; settings come back from `derived-data.json` |
+   | `signalk-shelly2` | Appstore | **re-apply the `units:bool` patch** (§9) after every reinstall |
+   | `holdingtank-status` | **this repo** (`pi-config/home/pi/.signalk/node_modules/`) | add to `package.json` deps (§2.3) |
+   | `signalk-fuel-economy` | **this repo** (`signalk-plugins/`) | copy in + add to `package.json` deps |
+
+   Only the first three are downloadable; the last two are custom and exist only here.
 
 ---
 
@@ -354,9 +366,14 @@ confirm with `ip link` and adjust `boatnetwork-up.sh` if the name differs.
 
 ## 9. Shelly automation
 
-- Restored via §2 + §4. Re-apply the **`units:bool` patch** to `signalk-shelly2`'s
-  `dist/components/SwitchBase.js` (one-line removal; see `pi-dock/README.md` §7) after any plugin reinstall.
-- Shelly devices unchanged (`.151` holding tank, `.142` cockpit light). Daemons are Python — run as-is.
+- **Install `signalk-shelly2` from the Appstore first** (see the plugin inventory in §2.7). Restoring
+  `plugin-config-data/signalk-shelly2.json` only brings back its settings, not the plugin.
+- Then re-apply the **`units:bool` patch** to `signalk-shelly2`'s `dist/components/SwitchBase.js`
+  (one-line removal; `pi-dock/signalk-shelly2-state-units.patch`). This must be repeated after
+  **every** plugin reinstall — an update silently reverts it and the switches report wrong units.
+- Shelly devices unchanged (`.151` holding tank, `.142` cockpit light). Both daemons
+  (`holding-tank-dump.py`, `cockpit-light.py`) use only Python's stdlib and need no pip packages;
+  `shelly-watchdog.sh` uses `curl`. Credentials come from `/etc/signalk-automation.env` (§2.4).
 
 ---
 
