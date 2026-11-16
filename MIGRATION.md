@@ -8,8 +8,9 @@
 - **CWWK Fanless Industrial Mini PC** — Intel **N100**, **8 GB RAM**, **128 GB M.2 NVMe** (included),
   **2× DB9 COM (RS232/RS485, jumper-switchable — set both to RS485, listen-only; §6)**, dual
   **2.5 GbE i226-V**, 2× HDMI + DP + USB-C, SIM slot, M.2 E-key, **12 V DC in**.
-- **Shipped state:** likely **Windows 11 preinstalled** with Secure Boot on. Irrelevant — the NVMe
-  gets wiped — but the BIOS needs three settings first, one of them critical (§1).
+- **Shipped state:** unlicensed **Windows 11** preinstalled, Secure Boot on. Irrelevant — the NVMe
+  gets overwritten, no licence or "upgrade path" involved — but the BIOS needs three settings
+  first, one of them critical (§1).
 - **CAN / NMEA 2000:** CANable2 USB-CAN (STM32G431CB), **candlelight** firmware → kernel
   `gs_usb` → `can0`. Already re-flashed from slcan; see §5.
 - **Second Wi-Fi:** the AIC8800 USB dongle (BoatNetwork AP).
@@ -38,6 +39,35 @@ the NVMe — but the BIOS settings are not, and two of them bite only later, on 
 
 While the lid is off, also move **both COM jumpers to RS485** (§6) — that's a board jumper, not a
 BIOS option. Confirm the BIOS reports **8 GB RAM** and the **128 GB NVMe** before closing up.
+
+**Getting Debian onto it — the Windows install is a red herring.** Nothing here needs a licence, an
+"upgrade" or a conversion: the installer **overwrites** the NVMe. The preinstalled build is almost
+certainly KMS/"activated" rather than genuinely licensed — not something to put on a boat network
+even if you wanted to keep it, and it's about to be erased anyway.
+
+Build the USB stick (any ≥ 1 GB stick). This is **amd64**, *not* arm64 — Raspberry Pi imaging
+tools will default to the wrong architecture, so write the raw ISO:
+
+```
+# on the Mac
+curl -LO https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/debian-13.7.0-amd64-netinst.iso
+# (if that 404s by the time the box arrives, open
+#  https://cdimage.debian.org/debian-cd/current/amd64/iso-cd/ and take the newest netinst)
+shasum -a 256 debian-13.7.0-amd64-netinst.iso     # expect a7ef94ac...67e355
+diskutil list                                      # identify the stick - check its size twice
+diskutil unmountDisk /dev/diskN
+sudo dd if=debian-13.7.0-amd64-netinst.iso of=/dev/rdiskN bs=4m
+diskutil eject /dev/diskN
+```
+
+Then on the N100: HDMI touchscreen and a **USB keyboard** plugged in (touch alone isn't enough for
+the installer), stick in, power on, one-time boot menu (**F7** or **F11**; `Del` = BIOS) and pick
+the entry prefixed **`UEFI:`** — this must be a UEFI install, not legacy/CSM. In the installer
+choose **“Guided — use entire disk”**, which removes Windows and its recovery partitions in one go.
+
+If the stick never shows up: re-check Fast Boot and Secure Boot are off, try a different USB port,
+and confirm you wrote to the stick you think you did. If the BIOS is locked with a seller password,
+clear CMOS via the board jumper.
 
 1. Debian 13 (Trixie) amd64 netinst, **no desktop yet**. Hostname `bossy`, user `pi` (sudo),
    disk = the 128 GB NVMe, **ext4** (installer default — journaling on). Enable SSH.
