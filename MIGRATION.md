@@ -98,11 +98,16 @@ clear CMOS via the board jumper.
    ```
    sudo apt update && sudo apt install -y git curl wget htop lm-sensors \
      hostapd dnsmasq network-manager labwc kanshi squeekboard pcmanfm \
-     libgtk-4-dev libgtk4-layer-shell-dev gcc pkg-config python3 python3-pip \
+     libgtk-3-dev libgtk-layer-shell-dev gcc pkg-config python3 python3-pip \
      bluez pipewire pipewire-pulse can-utils jq picocom chromium nodejs nginx rclone
    ```
-   `[TODO-CONFIRM]` `dock.c` targets GTK4 layer-shell; if it's GTK3, install
-   `libgtk-3-dev libgtk3-layer-shell-dev` instead (see `pi-dock/README.md` §1).
+   **`dock.c` is GTK3** — confirmed, not a guess: it calls `gtk_init()` and
+   `gtk_window_new(GTK_WINDOW_TOPLEVEL)`, both removed in GTK4, and includes
+   `<gtk-layer-shell.h>` (GTK3 header; GTK4's is `gtk4-layer-shell.h`). So the
+   packages are `libgtk-3-dev` + **`libgtk-layer-shell-dev`**.
+   ⚠️ *Not* `libgtk3-layer-shell-dev` — that name does not exist in Debian and apt
+   will refuse it. (Beware: packages.debian.org answers HTTP 200 for non-existent
+   packages, so a status-code check lies. Verify by the page body.)
 5. **Python dependency Debian doesn't package:** `set-timezone.py` imports `timezonefinder`,
    which is **not** in Debian 13 (`python3-timezonefinder` does not exist). Without it
    `set-timezone.timer` fails every 10 minutes:
@@ -178,6 +183,11 @@ clear CMOS via the board jumper.
    | `signalk-fuel-economy` | **this repo** (`signalk-plugins/`) | copy in + add to `package.json` deps |
 
    Only the first three are downloadable; the last two are custom and exist only here.
+
+   **The restored config already carries the enabled flag** — `derived-data.json`,
+   `holdingtank-status.json` and `signalk-shelly2.json` all contain `"enabled": true`. So once a
+   plugin is *installed*, restoring `plugin-config-data/` (§2.3) switches it on for you; there is no
+   need to toggle it in the UI. Restart Signal K after installing rather than before.
 10. **Restore the `Engine` KIP dashboard** (the other survivor — the `default` helm dashboard comes
    back with `.signalk` above). This one does **not** live in `.signalk`; it's `pi-dock/kip-config.json`,
    pushed into the KIP kiosk's Chromium *localStorage* over CDP. Nothing in §4 restores it, because
@@ -398,7 +408,7 @@ All transmission in this build goes out over NMEA 2000 (§5), not 0183.
 
 Rebuild the dock:
 ```
-gcc dock.c -o pi-dock $(pkg-config --cflags --libs gtk4-layer-shell gtk4)   # GTK3 variant if needed
+gcc dock.c -o pi-dock $(pkg-config --cflags --libs gtk+-3.0 gtk-layer-shell-0)
 sudo install -m 755 pi-dock /usr/local/bin/pi-dock
 ```
 `/etc/xdg/labwc/autostart` is unchanged and launches `pcmanfm`, `pi-dock`, `kanshi`,

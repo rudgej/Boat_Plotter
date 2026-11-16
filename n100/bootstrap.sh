@@ -33,7 +33,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 run()  { if [[ $CHECK_ONLY -eq 1 ]]; then printf '    would: %s\n' "$*"; else "$@"; fi; }
 
 PKGS="git curl wget htop lm-sensors hostapd dnsmasq network-manager labwc kanshi
-squeekboard pcmanfm libgtk-4-dev libgtk4-layer-shell-dev gcc pkg-config python3
+squeekboard pcmanfm libgtk-3-dev libgtk-layer-shell-dev gcc pkg-config python3
 python3-pip bluez pipewire pipewire-pulse can-utils jq picocom chromium nodejs nginx rclone"
 
 UNITS="boatnetwork.service boatnetwork-dnsmasq.service can0-nmea2000.service
@@ -78,17 +78,13 @@ for d in etc usr home var; do
 done
 [[ -d "$CFG/boot" ]] && ok "boot/ skipped (Pi config.txt - x86 uses GRUB)"
 
-say "4. dock (MIGRATION 7)"
-if have pkg-config && pkg-config --exists gtk4-layer-shell 2>/dev/null; then
+say "4. dock (MIGRATION 7) - dock.c is GTK3"
+if have pkg-config && pkg-config --exists gtk-layer-shell-0 2>/dev/null; then
     run gcc "$REPO_DIR/pi-dock/dock.c" -o /usr/local/bin/pi-dock \
-        $(pkg-config --cflags --libs gtk4-layer-shell gtk4) || warn "GTK4 dock build failed"
-    ok "built against GTK4"
-elif have pkg-config && pkg-config --exists gtk-layer-shell 2>/dev/null; then
-    run gcc "$REPO_DIR/pi-dock/dock.c" -o /usr/local/bin/pi-dock \
-        $(pkg-config --cflags --libs gtk-layer-shell gtk3) || warn "GTK3 dock build failed"
-    ok "built against GTK3"
+        $(pkg-config --cflags --libs gtk+-3.0 gtk-layer-shell-0) \
+        && ok "dock built (GTK3 layer-shell)" || warn "dock build failed"
 else
-    warn "no layer-shell dev package - install libgtk-3-dev libgtk3-layer-shell-dev"
+    warn "gtk-layer-shell-0 not found - need libgtk-3-dev libgtk-layer-shell-dev"
 fi
 
 say "5. KIP Engine dashboard (MIGRATION 2.8)"
