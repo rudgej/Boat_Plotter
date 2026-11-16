@@ -81,9 +81,47 @@ if cmp -s "$TMP" "$ISO"; then
     rm -f "$TMP"
     exit 0
 fi
-echo "  DIFFERS. First difference:"
-cmp "$TMP" "$ISO" 2>&1 | head -3 | sed 's/^/    /'
+echo "  DIFFERS. Locating the differences..."
+# cmp -l prints "offset val1 val2" (1-based) for each differing byte.
+FIRST=$(cmp -l "$TMP" "$ISO" 2>/dev/null | head -5)
+if [[ -n "$FIRST" ]]; then
+    echo "    first differing bytes (offset, stick, iso):"
+    echo "$FIRST" | sed 's/^/      /'
+else
+    echo "    no differing bytes reported - the files differ only in length"
+fi
+
+# One pass, capped, then derive which 1 MiB blocks are affected. Cheaper and
+# more informative than hashing 756 blocks individually.
+DIFF_OUT=$(cmp -l "$TMP" "$ISO" 2>/dev/null | head -200000)
+NDIFF=$(printf '%s\n' "$DIFF_OUT" | grep -c . || true)
+if (( NDIFF >= 200000 )); then
+    echo "    more than 200000 bytes differ - the image did not land correctly"
+    DIFFBLOCKS=999
+else
+    echo "    differing bytes: $NDIFF"
+    if (( NDIFF > 0 )); then
+        BLOCKS=$(printf '%s\n' "$DIFF_OUT" | awk '{print int(($1-1)/1048576)}' | sort -un | tr '\n' ' ')
+        echo "    affected 1 MiB blocks: $BLOCKS"
+        FROMLBA=$(printf '%s\n' "$DIFF_OUT" | awk 'NR==1{print int(($1-1)/1048576)}')
+        TOLBA=$(printf '%s\n' "$DIFF_OUT" | awk 'END{print int(($1-1)/1048576)}')
+    fi
+    DIFFBLOCKS=$NDIFF
+fi
+
+# The EFI System Partition from the ISO's own MBR: LBA 4116, 7360 sectors.
+ESP_START=$(( 4116 * 512 )); ESP_END=$(( (4116 + 7360) * 512 ))
+echo "    ISO EFI partition covers bytes $ESP_START .. $ESP_END"
 echo
-echo "  FAIL - reflash the stick:  sudo ./n100/make-usb.sh /dev/r$DEV"
+if (( NDIFF > 0 && NDIFF < 200000 )); then
+    echo "  DIFFERS (localised) - see the byte offsets above."
+    echo "  If they fall inside the EFI partition range, macOS wrote into the FAT ESP"
+    echo "  (it mounts it read-write and drops .fseventsd/.Spotlight-V100 there). That"
+    echo "  does not stop the stick booting, but reflash for a clean image:"
+    echo "    sudo ./n100/make-usb.sh /dev/r$DEV"
+else
+    echo "  FAIL - the image did not land correctly. Reflash:"
+    echo "    sudo ./n100/make-usb.sh /dev/r$DEV"
+fi
 rm -f "$TMP"
 exit 1
