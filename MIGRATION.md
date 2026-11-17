@@ -29,6 +29,7 @@ Print or keep this open; §0–15 is the reference, this is the running order.
 - [ ] *Guided — use entire disk* (this erases the unlicensed Windows; no licence involved) (§1)
 
 **On the fresh Debian**
+- [ ] **Set up key-based SSH + passwordless sudo** so the Mac can drive the rest (§1.6)
 - [ ] `sudo ./n100/bootstrap.sh` then `sudo ./n100/install-apps.sh` (§1–2)
 - [ ] Signal K first login; N2K connection → SocketCAN → `can0` (§5)
 - [ ] Both RS485 inputs, **listen-only**: 4800 and 38400 (§6)
@@ -159,6 +160,31 @@ clear CMOS via the board jumper.
    ```
    This drags in `numpy` (~20 MB) — expected. Quick check:
    `python3 -c "import timezonefinder; print('ok')"`.
+6. **Remote access for the build — do this before handing over.** The box is driven from the Mac
+   over the LAN, so it must accept **key** auth (an interactive password prompt cannot be answered
+   by automation) and allow **passwordless sudo** (every build step is `sudo`). The old Pi was set up
+   exactly this way — `pi-dock/README.md` records `pi` with passwordless sudo — so this is
+   precedent, not a new exposure.
+
+   Confirm **openssh-server** is installed (tick *SSH server* in the installer's tasksel screen, or
+   `sudo apt install -y openssh-server`). Then, **on the Mac**, one interactive step:
+
+   ```
+   ssh-copy-id -i ~/.ssh/id_ed25519.pub pi@192.168.1.50
+   ssh pi@192.168.1.50       # password once, then set up sudo:
+     echo "pi ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/010-pi-nopasswd
+     sudo chmod 440 /etc/sudoers.d/010-pi-nopasswd
+     exit
+   ```
+
+   Proof it worked — this must return silently with no prompt:
+
+   ```
+   ssh -o BatchMode=yes pi@192.168.1.50 'sudo -n true && echo READY'
+   ```
+
+   `READY` means the remaining work can be scripted end to end. If that line prompts or errors,
+   fix it now rather than mid-build: a password prompt is exactly what blocks automation.
 
 ---
 
