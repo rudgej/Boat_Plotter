@@ -8,6 +8,43 @@
 > udev, unit enablement — and prints what still needs hands. `--check` reports without changing
 > anything. Everything below remains the reference for *why*.
 
+## Pre-flight checklist — do these in order on the day
+
+Print or keep this open; §0–15 is the reference, this is the running order.
+
+**Before powering on (bench)**
+- [ ] **BIOS → *Restore AC Power Loss* = `Power On`** (a.k.a. *After Power Loss*, *AC Power
+      Recovery*, *State After G3*). **Auto power-up — the single most important setting here.**
+      Boat DC gets switched at the breaker and the battery isolator; without this the plotter stays
+      dead until someone presses the button. The Pi booted on power; a PC does not. **Verify by
+      pulling the DC plug, not by trusting the menu.** (§1)
+- [ ] BIOS → **Secure Boot = Disabled** (§1)
+- [ ] BIOS → **Intel VMD / RST = Disabled** — otherwise the installer sees **no disk** (§1)
+- [ ] BIOS → **Fast Boot = Disabled**, boot order USB first (§1)
+- [ ] **Both COM jumpers → RS485** (board jumpers, while the lid is off) (§6)
+- [ ] BIOS reports **8 GB RAM** and the **128 GB NVMe** before closing up
+
+**Install**
+- [ ] USB keyboard + installer stick, **F7/F11 → the entry starting `UEFI:`** (§1)
+- [ ] *Guided — use entire disk* (this erases the unlicensed Windows; no licence involved) (§1)
+
+**On the fresh Debian**
+- [ ] `sudo ./n100/bootstrap.sh` then `sudo ./n100/install-apps.sh` (§1–2)
+- [ ] Signal K first login; N2K connection → SocketCAN → `can0` (§5)
+- [ ] Both RS485 inputs, **listen-only**: 4800 and 38400 (§6)
+- [ ] Appstore: KIP, `signalk-to-nmea2000` + Wind(130306), `signalk-shelly2` + units patch (§2)
+- [ ] AvNav chart re-licence (encrypted, machine-bound) (§3)
+- [ ] `rclone config` for the Dropbox manuals (§15 / `pi-dock/dropbox/`)
+- [ ] Tailscale: login, approve subnet route, **disable key expiry** (§11)
+
+**Accept**
+- [ ] `ip -details link show can0` → UP, ERROR-ACTIVE, 250000 (§10)
+- [ ] Transmitted 130306 appears from the plotter's own source address (§10)
+- [ ] **Unattended power-cycle: pull DC, restore, everything returns on its own** (§10)
+- [ ] 24–48 h soak
+
+---
+
 ## 0. Hardware & architecture
 
 - **CWWK Fanless Industrial Mini PC** — Intel **N100**, **8 GB RAM**, **128 GB M.2 NVMe** (included),
@@ -50,6 +87,8 @@ the NVMe — but the BIOS settings are not, and two of them bite only later, on 
 | Setting | Menu (AMI BIOS, `Del` at power-on) | Set to | Why |
 |---|---|---|---|
 | **Restore AC Power Loss** — also *After Power Loss*, *AC Power Recovery*, *State After G3* | Advanced / Power Management | **Power On** | **The most important setting on this box.** Boat DC gets cut — breaker, battery switch, brownout. Without it the plotter stays dead until someone physically presses the button, which is no use at anchor or underway. The Pi did this by default; the PC does not. |
+| **ErP / EuP Ready** | Advanced / Power Management | **Disabled** | Energy regs mode cuts standby power and **silently defeats auto power-up** (and Wake-on-LAN). If *Restore AC Power Loss* is set to Power On but the box still won't start, this is almost always why. |
+| **Wake on LAN** (optional) | Advanced / Power Management | Enabled | lets you wake it over the network; pairs with ErP disabled |
 | **Secure Boot** | Security / Boot | **Disabled** | Debian netinst won't boot otherwise |
 | **Intel VMD / RST** (if shown) | Advanced → System Agent / Storage | **Disabled** | if left enabled the Debian installer sees **no disk at all** — a known N100 trap |
 | **Fast Boot** | Boot | **Disabled** | so the USB stick appears in the boot menu |
@@ -58,6 +97,10 @@ the NVMe — but the BIOS settings are not, and two of them bite only later, on 
 
 While the lid is off, also move **both COM jumpers to RS485** (§6) — that's a board jumper, not a
 BIOS option. Confirm the BIOS reports **8 GB RAM** and the **128 GB NVMe** before closing up.
+
+**Prove the auto power-up before you go any further:** with everything closed up, pull the DC plug,
+wait ten seconds, plug it back in. The box must start *by itself*. If it doesn't, one of the two
+settings above is wrong — find out now, on the bench, not at anchor. This is checked again in §10.
 
 **Getting Debian onto it — the Windows install is a red herring.** Nothing here needs a licence, an
 "upgrade" or a conversion: the installer **overwrites** the NVMe. The preinstalled build is almost
