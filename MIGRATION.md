@@ -1139,3 +1139,63 @@ timeout 10 candump -T 8000 can0 | grep -i FD02
 
 A zeroed payload (`FF 00 00 00 00 FA FF FF`) is correct with no wind on the sensor; what
 matters is that frames appear about twice a second.
+
+### 8.7 True wind, not apparent
+
+The requirement is **true wind** — what you feel standing still — so the bus must carry
+PGN 130306 with `Reference` = True, not Apparent.
+
+Signal K's `derived-data` supplies the pair the N2K conversion needs:
+
+| option | produces | needs |
+|---|---|---|
+| `groundWind` | `environment.wind.directionTrue` + `environment.wind.speedOverGround` | `headingTrue` (CAN) + `speedOverGround` |
+
+Note both keys are under **`environment.wind`** — `speedOverGround` there is the *ground
+wind speed*, not boat SOG. That is why `WIND_TRUE_GROUND` is the correct conversion:
+
+```json
+"WIND_TRUE_GROUND": { "enabled": true }
+```
+
+`WINDv2` (apparent) must be **disabled** so only true wind is published. Do **not** use
+`WIND_TRUE` / `angleTrueWater`: those need `navigation.speedThroughWater`, and there is no
+paddlewheel or log on this boat, so they can never produce a value.
+
+`derived-data.json`:
+
+```json
+{ "enabled": true,
+  "configuration": { "wind": { "groundWind": true, "directionTrue": true, "windShift": true } } }
+```
+
+**Caution when stationary:** true wind is computed as apparent wind minus boat velocity, so
+any noise in SOG becomes phantom wind. With the sensor indoors (0 apparent) and GPS
+jitter, the plotter legitimately publishes ~0.5 m/s of imaginary wind. Judge it underway.
+
+### 8.8 Water level detector (WATERLEVEL) → PGN 127505
+
+Same family as the wind sensor: joins `BoatNetwork`, web UI on port 80, pushes over UDP to
+`192.168.10.1:10110` — so the **existing NMEA 0183 UDP listener covers it, no new
+provider**. `http://<ip>/status` shows level, litres, raw mV and packet count, and
+`skState` confirms Signal K is receiving it.
+
+Signal K lands it at `tanks.freshWater.0.currentLevel` (ratio, 0.126 = 12.6%). Republish
+with the `TANKS` conversion, which needs an explicit instance mapping:
+
+```json
+"TANKS": { "enabled": true,
+           "tanks": [ { "signalkPath": "tanks.freshWater.0", "instanceId": 0 } ] }
+```
+
+Verify with `candump can0 | grep F211`. A healthy frame decodes as
+`10 27 0C ...` → type 1 (fresh water), instance 0, level 0x0C27 × 0.004 = 12.4%.
+
+Sensor-side settings to match: SSID `BoatNetwork`, host `192.168.10.1`, port `10110`,
+`capacity` 1000, `emptyMv` 0, `fullMv` 3100.
+
+### 8.9 Gauge zones
+
+`signalk-zones/set-zones.py` writes `meta.zones` for the KIP gauge bands against
+`http://localhost:3000`. Run as `pi`, no auth needed on the box. It reports each path it
+touches — 10/10 applied is the expected result. Re-run after any Signal K reinstall.
