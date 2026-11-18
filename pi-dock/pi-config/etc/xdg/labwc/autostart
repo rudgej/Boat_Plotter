@@ -1,6 +1,8 @@
-/usr/bin/lwrespawn /usr/bin/pcmanfm-pi &
-/usr/bin/lwrespawn /usr/local/bin/pi-dock &
+# Plotter kiosk: dock + touch keyboard + AvNav. Each line must name a binary
+# that exists on DEBIAN amd64 -- the Pi build used lwrespawn, pcmanfm-pi and
+# lxsession-xdg-autostart, none of which exist here, so they are NOT used.
+/usr/bin/pcmanfm &
+/usr/local/bin/pi-dock &
 /usr/bin/kanshi &
 /usr/bin/squeekboard &
-/usr/bin/lxsession-xdg-autostart
 (sleep 4 && /usr/local/bin/launch-avnav.sh) &

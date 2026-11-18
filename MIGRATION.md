@@ -561,8 +561,11 @@ Rebuild the dock:
 gcc dock.c -o pi-dock $(pkg-config --cflags --libs gtk+-3.0 gtk-layer-shell-0)
 sudo install -m 755 pi-dock /usr/local/bin/pi-dock
 ```
-`/etc/xdg/labwc/autostart` is unchanged and launches `pcmanfm`, `pi-dock`, `kanshi`,
-`squeekboard`, then `launch-avnav.sh`.
+`/etc/xdg/labwc/autostart` launches `pcmanfm`, `pi-dock`, `kanshi`, `squeekboard`, then
+`launch-avnav.sh`. ⚠️ The Pi version used **`lwrespawn`, `pcmanfm-pi` and
+`lxsession-xdg-autostart`** — none of those exist on Debian amd64, so the file is rewritten in this
+repo to call the real binaries directly. Verify with:
+`for b in $(grep -oE '/[a-z0-9/_-]+\.sh|/[a-z0-9/_-]+(?=\s|&|$)' /etc/xdg/labwc/autostart | sort -u); do [ -x "$b" ] || echo "MISSING $b"; done`
 
 **The dock's nine buttons → what each needs on x86** (all scripts restored via §4):
 
