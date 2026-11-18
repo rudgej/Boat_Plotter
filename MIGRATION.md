@@ -87,6 +87,15 @@ and label the ports once it's built; a dongle in the wrong socket on a dark boat
 
 ## 1. OS install
 
+> ⚠️ **Open issue, confirmed on the unit (2026-11-18): `State After G3` / *Restore AC Power Loss* was
+> NOT found.** Searched Advanced (no Power Management or PCH-IO entry) and Chipset → PCH-IO
+> Configuration (PCIe/SATA/USB/SerialIo/PMC/DeepSx — `DeepSx Power Policies` is already *Disabled*,
+> which is the ErP-adjacent setting). Deferred: get the system working first. Options to revisit, in
+> order: `Chipset → PCH-IO → PMC Configuration` and `Advanced → PCH-FW Configuration`; then
+> `Advanced → S5 RTC Wake Settings` as a timed-wake workaround; failing all that, a hardware answer at
+> the boat end (latching relay or UPS power-good signal). **Until resolved, a DC power cut leaves the
+> plotter off until someone presses the button.**
+
 > **Observed on the actual unit (CWWK N100, AMI Aptio).** `Advanced` holds: CPU Configuration,
 > Power & Performance, PCH-FW Configuration, Trusted Computing, **IT8625 Super IO Configuration**,
 > Hardware Monitor, S5 RTC Wake Settings, Network Stack Configuration, CSM Configuration, NVMe
