@@ -401,11 +401,15 @@ sudo systemctl daemon-reload
 
 **Enable:**
 ```
-sudo systemctl enable boatnetwork.service boatnetwork-dnsmasq.service \
-  can0-nmea2000.service can-watchdog.timer shelly-watchdog.timer \
-  holding-tank-dump.service cockpit-light.service memwatch.timer \
-  set-timezone.timer bt-hifi.service manuals-sync.timer
+sudo systemctl enable can0-nmea2000.service can-watchdog.timer \
+  shelly-watchdog.timer holding-tank-dump.service cockpit-light.service \
+  memwatch.timer set-timezone.timer bt-hifi.service manuals-sync.timer
 ```
+
+> **Do not enable `boatnetwork.service` / `boatnetwork-dnsmasq.service`.** Those were the
+> Pi's hostapd + dedicated-dnsmasq pair on `wlan1`. On the N100 the AP is owned by
+> NetworkManager (§8.2) and the standalone `dnsmasq` service must stay **masked**, otherwise
+> its empty config holds `0.0.0.0:53` and the AP activation fails outright.
 
 **Delete / don't enable (Pi-specific):**
 `gpu-noidle.service`, `nvme-noidle.service`, `diagwatch.service`,
@@ -628,12 +632,90 @@ repo to call the real binaries directly. Verify with:
 
 ---
 
-## 8. BoatNetwork AP (AIC8800 USB dongle)
+## 8. Wi-Fi: uplink + BoatNetwork AP (two radios)
 
-Config unchanged (`boatnetwork/` + `pi-config/etc/{hostapd,default,NetworkManager}`):
-SSID `BoatNetwork`, box at `192.168.10.1`, DHCP `.100–.200`. Password: see the local secrets file, not this repo.
-Keep `NetworkManager/conf.d/boatnetwork-unmanaged.conf`. The dongle may enumerate as `wlan1` —
-confirm with `ip link` and adjust `boatnetwork-up.sh` if the name differs.
+The N100 has **one** onboard radio, and it cannot do both jobs. Verified with
+`iw phy phy0 info`: the RTL8821CE (`rtw_8821ce`, PCI `03:00.0`) lists
+`managed` and `AP` under supported modes but reports **no valid interface
+combinations**, so it will not act as a station and an AP at the same time.
+(The "two antennas" on the case are one Wi-Fi + one Bluetooth on that same
+combo card — not two adapters.)
+
+So the split is:
+
+| Radio | Role | Why |
+|---|---|---|
+| Onboard RTL8821CE (`wlp3s0`) | uplink to Bossywifi / Starlink | in-chassis antenna, needs the range |
+| USB AIC8800D80 (`wlx…`) | BoatNetwork AP | clients (Shelly, sensors) are metres away |
+
+### 8.1 Driver for the USB adapter
+
+Debian 13 has no in-kernel driver for the AIC8800. Run
+`n100/install-wifi-dongle.sh`.
+
+Two traps, both silent:
+
+1. `a69c:8d80` is only the **firmware-download stage**. After `aic_load_fw`
+   runs, the dongle re-enumerates as **`368b:8d83`**. Radxa's tree does not know
+   that ID — its probe fails with `failed with errno 0` and you get no
+   interface. Use `shenmintao/aic8800d80`, which defines
+   `USB_PRODUCT_ID_AIC8800M80_CUS1 0x8D83`.
+2. On Radxa's tree the firmware lands in `/lib/firmware/aic8800_fw/USB/` while
+   the driver looks in `/lib/firmware/aic8800D80/`, giving
+   `wrong size of firmware file`. Delete **all** `aic8800*` firmware dirs before
+   installing — a stale mix can hang the chip.
+
+Confirm success with two phys and two interfaces:
+
+```
+ls -d /sys/class/ieee80211/*      # phy0 + phy1
+ip -br link | grep '^wl'          # wlp3s0 + wlx…
+```
+
+### 8.2 The AP
+
+`n100/setup-boatnetwork.sh` creates it through NetworkManager:
+
+```
+sudo PASS='<passphrase>' ./n100/setup-boatnetwork.sh
+```
+
+- SSID `BoatNetwork`, WPA2/CCMP, 2.4 GHz channel 6, `autoconnect yes`
+- box at **`192.168.10.1/24`** — this must stay on the old Pi subnet, because
+  the Shelly devices hold static `192.168.10.x` addresses (`.151` holding tank,
+  `.142` cockpit light)
+- DHCP `192.168.10.100–200`, 1 h leases, DNS forwarded upstream
+- the passphrase is **not** in this repo; it lives only in
+  `/etc/NetworkManager/system-connections/BoatNetwork.nmconnection`
+
+**The dnsmasq trap.** `bootstrap.sh` installs the `dnsmasq` package, whose
+service starts with an empty config and grabs `0.0.0.0:53`. NetworkManager
+runs its *own* dnsmasq for `ipv4.method shared`, which then fails with
+`failed to create listening socket for …: Address already in use` and the
+whole AP activation aborts. The script masks the standalone service:
+
+```
+systemctl disable --now dnsmasq && systemctl mask dnsmasq
+```
+
+### 8.3 Check it
+
+```
+sudo nmcli device wifi list ifname wlp3s0 | grep BoatNetwork   # beacon
+ip -br addr show wlx…                                          # 192.168.10.1
+curl -s -o /dev/null -w '%{http_code}\n' http://192.168.10.1:3000/signalk
+```
+
+A client on `BoatNetwork` reaches Signal K at `192.168.10.1:3000` and AvNav at
+`192.168.10.1:8080`.
+
+### 8.4 If the onboard card is impossible to use as an uplink
+
+Starlink Gen 3 routers have two Ethernet ports (Gen 2 needs the Ethernet
+adapter). Wiring the plotter to one of those makes Ethernet the uplink, leaves
+the onboard card entirely free for the AP, and removes the dongle from the
+critical path.
+
 
 ---
 
