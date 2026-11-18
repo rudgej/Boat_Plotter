@@ -1,6 +1,18 @@
 #!/bin/bash
 LOG=/var/log/can-watchdog.log
 
+# The CANable being physically unplugged is NOT a fault - do not tear the
+# plotter down over it. Only act when the adapter is actually present.
+# (Without this, an unplugged adapter restarts Signal K every 10 s forever.)
+if ! lsusb 2>/dev/null | grep -q "1d50:606f"; then
+    if [ ! -f /run/can-watchdog.absent ]; then
+        echo "$(date '+%F %T') CANable not present - skipping checks" >> "$LOG"
+        touch /run/can-watchdog.absent
+    fi
+    exit 0
+fi
+rm -f /run/can-watchdog.absent
+
 info=$(ip -details link show can0 2>/dev/null)
 
 if [ -z "$info" ]; then
