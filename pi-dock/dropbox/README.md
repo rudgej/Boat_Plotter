@@ -12,7 +12,7 @@ Built here as real files, restored by §4 and enabled by `bootstrap.sh`:
 | `/etc/systemd/system/manuals-sync.{service,timer}` | runs 5 min after boot, then every 30 min |
 | `/etc/nginx/sites-available/manuals` | serves the library read-only on **:8081** (`:3000` = Signal K, `:8080` = AvNav) |
 | `/home/pi/manuals/` | the local copy (created by the sync) |
-| `pi-dock/launch-manuals.sh` | kiosk window for the dock button |
+| `pi-dock/pi-config/usr/local/bin/launch-manuals.sh` | kiosk window for the dock button |
 
 **Why nginx and not `python3 -m http.server`:** only nginx honours HTTP **Range** requests, so a
 300-page engine manual pages and scrolls in the kiosk browser instead of having to be fetched whole

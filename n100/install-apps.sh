@@ -58,6 +58,12 @@ else
     run apt-get update -qq
     run apt-get install -y avnav || warn "avnav failed - retry: apt install -y python3-bluez && apt install -y avnav"
 fi
+# o-charts / oeSENC reader - the bought charts cannot be used without it
+if dpkg -s avnav-ochartsng >/dev/null 2>&1; then
+    ok "avnav-ochartsng already installed"
+else
+    run apt-get install -y avnav-ochartsng || warn "avnav-ochartsng failed - apt install -y avnav-ochartsng"
+fi
 
 say "4. Tailscale (remote access, MIGRATION 11)"
 if command -v tailscale >/dev/null 2>&1; then

@@ -1,6 +1,6 @@
 # Grafana
 
-The kiosk launcher survives (`pi-dock/launch-grafana.sh`); the server side was never captured in
+The kiosk launcher survives (`pi-dock/pi-config/usr/local/bin/launch-grafana.sh`); the server side was never captured in
 the repo.
 
 ## What it was

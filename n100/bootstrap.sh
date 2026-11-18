@@ -34,7 +34,8 @@ run()  { if [[ $CHECK_ONLY -eq 1 ]]; then printf '    would: %s\n' "$*"; else "$
 
 PKGS="git curl wget htop lm-sensors hostapd dnsmasq network-manager labwc kanshi
 squeekboard pcmanfm libgtk-3-dev libgtk-layer-shell-dev gcc pkg-config python3
-python3-pip bluez pipewire pipewire-pulse can-utils jq picocom chromium nodejs nginx rclone"
+python3-pip bluez bluez-tools pipewire pipewire-pulse wireplumber can-utils jq picocom
+chromium nodejs nginx rclone zenity grim wlr-randr"
 
 UNITS="boatnetwork.service boatnetwork-dnsmasq.service can0-nmea2000.service
 can-watchdog.timer shelly-watchdog.timer holding-tank-dump.service
@@ -101,6 +102,7 @@ fi
 
 say "6. udev + units (MIGRATION 4/5/6)"
 run udevadm control --reload
+run udevadm trigger		# creates /dev/rs485-* symlinks now, not only at next boot
 run systemctl daemon-reload
 for u in $UNITS; do
     if [[ -e "/etc/systemd/system/$u" ]]; then

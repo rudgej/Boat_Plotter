@@ -345,8 +345,42 @@ clear CMOS via the board jumper.
    ```
    Suite **`trixie`** carries `amd64`. Port **8080**.
 2. If it fails on `python3-bluez`: `sudo apt install -y python3-bluez`.
-3. Install the **ochartsng** plugin and **re-license the chart set** (fingerprint is machine-bound,
-   and the charts are encrypted — this is the one unavoidable re-activation).
+3. Charts — **do not skip this**. AvNav with an empty chart directory never finishes
+   loading: the chart-list dialog spins on "Fetching Chartlist …" forever, because the
+   list only stops loading once it contains at least one chart. It looks like a network
+   hang; it is not. Two independent chart sources are needed:
+
+   **3a. Base chart** — generated locally from Natural Earth (public domain, so bulk
+   generation raises no tile-server usage-policy problem). It gives coastline, borders,
+   lakes and place names for orientation, and is **not for navigation**:
+   ```
+   sudo apt install -y python3-numpy python3-pil python3-shapefile python3-certifi
+   sudo ./n100/make-base-chart.py --bbox -6,29,37,47 --zoom 0-9 \
+        --out /tmp/med-base.mbtiles --name "Mediterranean base (Natural Earth)"
+   sudo install -o avnav -g avnav -m 644 /tmp/med-base.mbtiles /var/lib/avnav/charts/
+   ```
+   `--bbox -6,29,37,47` is the Mediterranean; change it for other cruising grounds
+   (2,818 tiles, ~10 min). Rendering again when the boat moves is cheaper than carrying
+   world-wide zoom levels.
+
+   **3b. o-charts (oeSENC)** — `avnav-ochartsng` comes from the same oss.boating repo and
+   registers itself as the `system-ochartsng` provider (port 8083). Its charts live in
+   **`/var/lib/avnav/ochartsng/charts`**, not in the normal chart directory, so they do not
+   appear in `/var/lib/avnav/charts`. Check it is alive with
+   `curl -s http://localhost:8083/status` → `"state":"READY"`.
+
+   The licence is bound to a hardware fingerprint, so the bought set must be **re-issued**
+   after the hardware change (this is the one unavoidable re-activation):
+   1. Get the fingerprint — plugin GUI (Apps → Ocharts-Provider → Charts → "Get Fingerprint")
+      or headless: `curl -s "http://localhost:8083/shop/fpr?forDownload=true" -o bossy.fpr`
+      (~337 bytes; it is deliberately obfuscated, do not edit it).
+   2. Upload it at <https://o-charts.org/shop/en/module/occharts/occhartsOesu> and give the
+      system a name, e.g. `bossy-n100`. Up to 5 systems per account — the old Pi system can
+      stay registered.
+   3. Assign the already-bought chart to the new system and request the download mail.
+   4. Download the zip and upload it in the plugin GUI with "Upload Zip". No restart needed
+      with ochartsng.
+4. If AvNav fails to install on `python3-bluez`: `sudo apt install -y python3-bluez`.
 
 ---
 
@@ -407,8 +441,15 @@ STM32 96-bit UID `0048004C594B500920343237`. Another reason the udev rule keys o
    ACTION=="add", SUBSYSTEM=="net", DRIVERS=="gs_usb", NAME="can0"
    ```
    `sudo udevadm control --reload`
-2. `can0-nmea2000.service` is **already generic**
-   (`ip link set can0 up type can bitrate 250000 restart-ms 100`) — no edit.
+2. `can0-nmea2000.service` must **not** use `restart-ms`. The CANable2 in candleLight
+   (`gs_usb`) mode rejects it with *"Device doesn't support restart from Bus Off"*, the
+   unit fails, `can0` never comes up and Signal K sees nothing. Split the two calls:
+   ```
+   ExecStart=/sbin/ip link set can0 type can bitrate 250000
+   ExecStart=/sbin/ip link set can0 up
+   ```
+   The unit also carries `After=dev-can0.device` / `Wants=dev-can0.device` so it starts
+   when the adapter is **plugged in**, not only at boot.
 3. `/usr/local/bin/can-watchdog.sh` still contains an MCP2515 IRQ-storm block (greps
    `/proc/interrupts` for `spi0.0`). On the N100 that grep returns nothing, the arithmetic
    collapses to `0`, and the check never fires — **harmless, leave it or delete it**. The

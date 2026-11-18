@@ -1,11 +1,16 @@
 [Unit]
 Description=Bring up can0 at 250 kbit/s for NMEA2000
+After=dev-can0.device
+Wants=dev-can0.device
 Before=signalk.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/sbin/ip link set can0 up type can bitrate 250000 restart-ms 100
+# restart-ms is NOT supported by the gs_usb (candleLight) CANable2 firmware,
+# so bitrate and link-up are separate commands.
+ExecStart=/sbin/ip link set can0 type can bitrate 250000
+ExecStart=/sbin/ip link set can0 up
 ExecStop=/sbin/ip link set can0 down
 
 [Install]

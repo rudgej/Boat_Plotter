@@ -1,65 +1,51 @@
-<?xml version="1.0" ?><!-- configuration for avnav_server on windows
-     we do not have a gpsd and we can only directly use serial readers --><AVNServer>
-<!-- <AVNSerialReader name="com4reader" port="3" useFeeder="true"/>-->
-<!-- add readers here for com ports that you want to listen on -->
-<!--<AVNSerialReader useFeeder="true" name="com8reader" port="7" baud="38400" minbaud="4800"/>-->
-<!-- bluetooth support
-	 we have a scanner that is looking for bluetooth devices
-	 if one is found, it will try to connect and feed the data through the gpsd feeder
-	 this avoids the need for more or less broken rfcomm stuff
-	  -->
+<?xml version="1.0" ?>
+<!-- AvNav server configuration for the N100 plotter (bossy).
 
-<AVNBlueToothReader maxDevices="5">
-</AVNBlueToothReader>
+     Data flow: NMEA2000 on can0 -> Signal K (:3000) -> AvNav through
+     AVNSignalKHandler below. AvNav does NOT read the CAN bus itself,
+     so there is deliberately no builtin-canboat plugin enabled.
 
-<!-- udev based detection of serial devices
-	 we can have an autodetection here but can also add defined devices
-	 to e.g. limit to some USB ports (or later for output)
-	 identification of devices is based on the USB bus id
-	 this heavily depends on the topology of the connected devices
-	 for my setup with an USB 4 port HUB at the upper USB port
-	 a device at the hubs first port will look like: 1-1.2.1:1.0 ,
-	 at the second 1-1.2.2:1.0 - potentially you must check the logs
-	 The below config uses a predefined device with this ID and 
-	 room for 4 additional autodetect devices
-	 The serial parameters are the same like for all serial readers
-	 We use autobaud between 4800 and 38400 here
-	 The data is feed through the gpsd feeder
-	 -->
-<AVNUsbSerialReader maxDevices="5" allowUnknown="true" baud="38400" minbaud="4800">
-	<!-- a serial output device at one particular USB port
-             with this filter it will output all NMEA data but no AIS data
-             you can further restrict this by using e.g. $RMC for NMEA RMC sentences 
-	     in this configuration it additionally has a reader enabled that runs at the same baudrate
-	     use a readerFilter to also apply a filter at the reader-->
-	<!-- <UsbDevice usbid="3-4.3.1:1.0" baud="38400" type="writer" xonxoff="1" timeout="10" filter="$RMC" combined="True" /> -->
-	<!-- more readable form ...-->
-	<!-- <UsbDevice usbid="3-4.3.1:1.0" baud="38400" type="combined" xonxoff="1" timeout="10" filter="$RMC" /> -->
-	<!-- a device to be ignored - e.g. for testing -->
-	<!-- <UsbDevice usbid="3-10.1:1.0" baud="38400" type="ignore" /> -->
-	<!-- a reader with autobaud and filter - it will filter out any RMC records and all AIS stuff-->
-	<!--<UsbDevice usbid="3-4.3.2:1.0" baud="38400" minbaud="4800" type="reader" filter="^$RMC,^!"/>-->
-	<!-- a pure writer that outputs RMB -->
-	<!-- <UsbDevice usbid="3-10.3.1:1.0" baud="4800" minbaud="4800" type="writer" filter="$RMB"/> -->
-	<!--<UsbDevice usbid="3-4.3.2:1.0" baud="38400" minbaud="4800" type="ignore" filter=""/>-->
-</AVNUsbSerialReader>
+     Charts: MBTiles / GEMF files in /var/lib/avnav/charts.
+     o-charts (oeSENC) charts live in /var/lib/avnav/ochartsng/charts and
+     are served by the ochartsng plugin, which registers itself - it needs
+     no entry here.
 
+     AvNav rewrites this file when settings are changed in its GUI, so treat
+     GUI changes as the source of truth once the boat is in service. -->
+<AVNServer>
 
+	<!-- USB serial NMEA sources, auto-detected (AIS receiver, handheld,
+	     old plotter output). Autobaud between 4800 and 38400. -->
+	<AVNUsbSerialReader maxDevices="5" allowUnknown="true" baud="38400" minbaud="4800">
+	</AVNUsbSerialReader>
 
-<!-- for testing purposes: connect to a socket for reading NMEA data -->
-<!--<AVNSocketReader host="localhost" port="34568"/>-->
-<AVNUdpReader port="34667" minTime="100"/>
-<!-- provide your data at this port for e.g. OpenCPN -->
-<AVNSocketWriter port="34567" maxDevices="5" filter="" read="true" minTime="100" avahiName="avnav-server"/>
-<AVNTrackWriter interval="10" distance="100"/>
-<AVNHttpServer httpPort="8080"/>
-<AVNCommandHandler>
-	<Command name="sound" command="mpg123 -q" repeat="1"/>
-</AVNCommandHandler>
-<AVNPluginHandler>
-<!-- ##CANBOAT 
-	<builtin-canboat enabled="true" allowKeyOverwrite="true" autoSendRMC="30" sourceName="canboatgen"/>
- ##CANBOAT -->
-</AVNPluginHandler>
-<AVNSignalKHandler uuid="3ef4b97d-9963-4e72-bf4b-e887fcb19877" migrated="True" decodeData="true"/>
+	<!-- Onboard RS485 ports, exposed by /etc/udev/rules.d/60-rs485.rules.
+	     Both are listen-only inputs. Uncomment and set the baud rate for the
+	     device that is actually wired in; leaving them commented avoids
+	     opening ports that have nothing attached. -->
+	<!-- <AVNSerialReader name="rs485-1" port="/dev/rs485-1" baud="4800" minbaud="4800"/> -->
+	<!-- <AVNSerialReader name="rs485-2" port="/dev/rs485-2" baud="38400" minbaud="4800"/> -->
+
+	<!-- Bluetooth NMEA (SPP). Disabled: the wireless link on this boat is an
+	     A2DP speaker handled by BlueALSA, not an NMEA source. -->
+	<!-- <AVNBlueToothReader maxDevices="5"></AVNBlueToothReader> -->
+
+	<!-- NMEA in/out for external tools such as OpenCPN -->
+	<AVNUdpReader port="34667" minTime="100"/>
+	<!--<AVNSocketReader host="localhost" port="34568"/>-->
+	<AVNSocketWriter port="34567" maxDevices="5" filter="" read="true" minTime="100" avahiName="avnav-server"/>
+	<AVNTrackWriter interval="10" distance="100"/>
+
+	<AVNHttpServer httpPort="8080"/>
+	<AVNCommandHandler>
+		<Command name="sound" command="mpg123 -q" repeat="1"/>
+	</AVNCommandHandler>
+
+	<AVNPluginHandler>
+		<!-- ##CANBOAT
+		<builtin-canboat enabled="true" allowKeyOverwrite="true" autoSendRMC="30" sourceName="canboatgen"/>
+		##CANBOAT -->
+	</AVNPluginHandler>
+
+	<AVNSignalKHandler uuid="3ef4b97d-9963-4e72-bf4b-e887fcb19877" migrated="True" decodeData="true"/>
 </AVNServer>
