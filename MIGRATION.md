@@ -87,6 +87,23 @@ and label the ports once it's built; a dongle in the wrong socket on a dark boat
 
 ## 1. OS install
 
+**If `Del` does not enter the BIOS, do not fight the timing.** With Windows still installed, reboot
+straight into the firmware from Windows — no key presses needed:
+
+```
+shutdown /r /fw /t 0          # admin Command Prompt / Terminal
+```
+
+or *Settings → System → Recovery → Advanced startup → Restart now → Troubleshoot → Advanced options
+→ UEFI Firmware Settings*. If `/fw` reports "not supported", use the GUI route.
+
+Why the key fails: **Fast Boot initialises USB too late** for the BIOS to see the keyboard — a
+chicken-and-egg, since Fast Boot must be turned off from inside the BIOS. Also note **Windows Fast
+Startup** makes "Shut down" a partial hibernate, so powering on from it skips POST entirely and no
+key can register: always use **Restart**, or Shift+Restart. A keyboard that works in Windows can
+still be invisible to POST if it is on a **USB 3 port or a hub** — try a wired keyboard on a rear
+USB 2.0 port, and also try `F2`, `F7`, `F11`, `Esc`.
+
 **Before anything else — BIOS.** These units ship with **Windows 11 preinstalled** (the OEM key
 lives in the BIOS) and **Secure Boot enabled**. The Windows install is irrelevant — step 1 wipes
 the NVMe — but the BIOS settings are not, and two of them bite only later, on the boat, if missed:
