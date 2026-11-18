@@ -1,0 +1,2 @@
+# Bring can0 up whenever the CANable2 appears, not only at boot.
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="can0", TAG+="systemd", ENV{SYSTEMD_WANTS}+="can0-nmea2000.service"

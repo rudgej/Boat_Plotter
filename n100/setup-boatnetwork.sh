@@ -61,6 +61,14 @@ if systemctl list-unit-files dnsmasq.service >/dev/null 2>&1; then
     echo "==> standalone dnsmasq masked (NetworkManager provides DHCP/DNS)"
 fi
 
+# hostapd is only needed by the Pi implementation; here NetworkManager drives
+# the AP and a competing hostapd would fight it for the interface.
+if systemctl list-unit-files hostapd.service >/dev/null 2>&1; then
+    systemctl disable --now hostapd 2>/dev/null || true
+    systemctl mask hostapd 2>/dev/null || true
+    echo "==> hostapd masked (NetworkManager owns the AP)"
+fi
+
 nmcli connection delete "$SSID" >/dev/null 2>&1 || true
 nmcli connection add type wifi ifname "$AP_IF" con-name "$SSID" ssid "$SSID" >/dev/null
 nmcli connection modify "$SSID" \

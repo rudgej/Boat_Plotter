@@ -452,8 +452,18 @@ STM32 96-bit UID `0048004C594B500920343237`. Another reason the udev rule keys o
    ExecStart=/sbin/ip link set can0 type can bitrate 250000
    ExecStart=/sbin/ip link set can0 up
    ```
-   The unit also carries `After=dev-can0.device` / `Wants=dev-can0.device` so it starts
-   when the adapter is **plugged in**, not only at boot.
+   **Do not** add `After=dev-can0.device` / `Wants=dev-can0.device`. `dev-can0.device`
+   is `/dev/can0`, which does not exist for a network interface — systemd queues a job
+   that can never complete and the whole boot **hangs** (`multi-user.target`,
+   `signalk.service` and everything else stay `waiting`). The correct unit name would be
+   `sys-subsystem-net-devices-can0.device`, but don't rely on it. Use instead:
+   - an `ExecStartPre` loop that waits up to 10 s for `ip link show can0`
+   - a udev rule so the unit also runs when the adapter is **plugged in** later:
+     ```
+     # /etc/udev/rules.d/62-can0-nmea2000.rules
+     ACTION=="add", SUBSYSTEM=="net", KERNEL=="can0", TAG+="systemd", \
+       ENV{SYSTEMD_WANTS}+="can0-nmea2000.service"
+     ```
 3. `/usr/local/bin/can-watchdog.sh` still contains an MCP2515 IRQ-storm block (greps
    `/proc/interrupts` for `spi0.0`). On the N100 that grep returns nothing, the arithmetic
    collapses to `0`, and the check never fires — **harmless, leave it or delete it**. The
@@ -697,6 +707,15 @@ whole AP activation aborts. The script masks the standalone service:
 ```
 systemctl disable --now dnsmasq && systemctl mask dnsmasq
 ```
+
+`hostapd` is masked for the same reason — it is the Pi's mechanism and would
+fight NetworkManager for the interface.
+
+The Pi's own `boatnetwork.service`, `boatnetwork-dnsmasq.service`,
+`/etc/hostapd/`, `/etc/default/hostapd` and
+`NetworkManager/conf.d/boatnetwork-unmanaged.conf` have been **removed from
+`pi-config/`**, so a restore no longer reinstalls an implementation that is
+enabled-but-broken on x86.
 
 ### 8.3 Check it
 

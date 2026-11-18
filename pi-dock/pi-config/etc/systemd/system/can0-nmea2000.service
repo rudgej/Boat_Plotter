@@ -1,14 +1,17 @@
 [Unit]
 Description=Bring up can0 at 250 kbit/s for NMEA2000
-After=dev-can0.device
-Wants=dev-can0.device
 Before=signalk.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Do NOT depend on dev-can0.device: that is /dev/can0, which never exists for a
+# network interface. The right unit name is sys-subsystem-net-devices-can0.device,
+# and waiting on the wrong one hangs the whole boot queue.
+#
 # restart-ms is NOT supported by the gs_usb (candleLight) CANable2 firmware,
 # so bitrate and link-up are separate commands.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 40); do ip link show can0 >/dev/null 2>&1 && exit 0; sleep 0.25; done; exit 1'
 ExecStart=/sbin/ip link set can0 type can bitrate 250000
 ExecStart=/sbin/ip link set can0 up
 ExecStop=/sbin/ip link set can0 down
