@@ -1049,3 +1049,43 @@ labwc 0.8.3 does not. Options if that becomes unacceptable:
 
 Do **not** pass `--bg`/`--fg` to `wvkbd-mobintl`: the flags colour the background and the
 label with the same palette and you get white-on-white keys. Defaults are correct.
+
+### 8.5 The wind sensor (WINDSEND, Wi-Fi → Signal K over UDP)
+
+The wind sensor joins `BoatNetwork` and **pushes NMEA 0183 over UDP**; it is not on the
+CAN bus. It gets `192.168.10.x` by DHCP from the AP and runs a small web UI on port 80.
+
+Its own settings (`http://<sensor-ip>/`, POST to `/save`) are:
+
+| Field | Value |
+|---|---|
+| Wi-Fi SSID | `BoatNetwork` |
+| Signal K host | `192.168.10.1` (the AP address, not the uplink) |
+| Signal K UDP port | `10110` |
+
+`http://<sensor-ip>/status` returns JSON showing Wi-Fi state, packet count and
+`skState`. It reports **"Not confirmed (HTTP 404)"** until a listener exists — that is a
+useful health check, so always look at it first when wind is missing.
+
+**Signal K must have an NMEA 0183 UDP listener on 10110.** `settings.json` is not captured
+by `snapshot-pi.sh`, so this is recreated by hand. Under `pipedProviders`, alongside the
+existing `n2k-can0` entry:
+
+```json
+{
+  "id": "nmea0183-wind",
+  "enabled": true,
+  "pipeElements": [{
+    "type": "providers/simple",
+    "options": { "type": "NMEA0183", "subOptions": { "type": "udp", "port": 10110 } }
+  }]
+}
+```
+
+Then `sudo systemctl restart signalk` and check the socket is held:
+`sudo ss -lunp | grep 10110`.
+
+Results appear as `environment.wind.speedApparent` / `angleApparent` with
+`$source: nmea0183-wind`. `directionTrue` / `directionGround` are then supplied by
+`derived-data` using the heading from the CAN bus — which is why heading and wind together
+give true wind, and wind alone does not.
