@@ -13,6 +13,11 @@
 Print or keep this open; §0–15 is the reference, this is the running order.
 
 **Before powering on (bench)**
+
+> **Do not open the case yet.** Boot to the BIOS first and look for the COM mode there (§6) — it is
+> often a BIOS setting, not a jumper. And even if jumpers *are* needed, they do **not** block the
+> build: N2K arrives over USB, so everything can be installed and validated first.
+
 - [ ] **BIOS → *Restore AC Power Loss* = `Power On`** (a.k.a. *After Power Loss*, *AC Power
       Recovery*, *State After G3*). **Auto power-up — the single most important setting here.**
       Boat DC gets switched at the breaker and the battery isolator; without this the plotter stays
@@ -21,7 +26,8 @@ Print or keep this open; §0–15 is the reference, this is the running order.
 - [ ] BIOS → **Secure Boot = Disabled** (§1)
 - [ ] BIOS → **Intel VMD / RST = Disabled** — otherwise the installer sees **no disk** (§1)
 - [ ] BIOS → **Fast Boot = Disabled**, boot order USB first (§1)
-- [ ] **Both COM jumpers → RS485** (board jumpers, while the lid is off) (§6)
+- [ ] **COM RS485 mode** — check the **BIOS** first (§6); jumpers only if the BIOS has no option.
+      Not build-blocking: N2K arrives over USB.
 - [ ] BIOS reports **8 GB RAM** and the **128 GB NVMe** before closing up
 
 **Install**
@@ -463,12 +469,21 @@ All transmission in this build goes out over NMEA 2000 (§5), not 0183.
 | COM 1 | `/dev/rs485-1` | **4800 8N1** | general instrument data (classic NMEA 0183) |
 | COM 2 | `/dev/rs485-2` | **38400 8N1** | AIS (the conventional AIS rate) |
 
-1. Set both COMs to **RS485** via the board jumpers (factory default is RS232). Wiring is the
-   A/B differential pair plus signal ground; these are short runs, so no bus termination is needed.
-2. Signal K → *Data Connections → Add → Serial* per port, **input only**:
+1. **RS232/RS485 mode — check the BIOS before opening the case.** On many CWWK/AMI industrial
+   boards the mode is a **BIOS setting**, not a jumper: `Advanced → Serial Port Configuration` (or
+   a SuperIO / IT8786 submenu) exposing *Serial Port 1/2 Mode* = `RS232` / `RS485` / `RS422`.
+   Look there first. Only if it is absent are physical jumpers involved — a 2–3 pin header near the
+   DB9s, often labelled `J1`/`J2` or `485`.
+2. **This does not block the build.** NMEA 2000 arrives over USB (the CANable2 → `can0`), so the
+   whole system can be built, validated and soaked with the COM ports still in RS232 mode. The
+   ports only matter once NMEA 0183 instruments and AIS are physically connected.
+   Wiring is the A/B differential pair plus signal ground; short runs, so no bus termination.
+   Fallback if the ports cannot be switched: a USB→RS485 adapter per port, at the cost of two USB
+   sockets — see the port budget in §0.
+3. Signal K → *Data Connections → Add → Serial* per port, **input only**:
    - `/dev/rs485-1` @ 4800 8N1
    - `/dev/rs485-2` @ 38400 8N1
-3. `[TODO-CONFIRM]` if a port stays silent, the port↔instrument mapping is reversed or the rate
+4. `[TODO-CONFIRM]` if a port stays silent, the port↔instrument mapping is reversed or the rate
    differs — try the other COM and the other rate before assuming a wiring fault.
 
 ---
