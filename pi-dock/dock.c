@@ -76,6 +76,7 @@ int main (int argc, char **argv)
         {"Spotify",   "/usr/local/bin/launch-spotify.sh"},
         {"Signal K",  "/usr/local/bin/launch-signalk.sh"},
         {"Grafana",   "/usr/local/bin/launch-grafana.sh"},
+        {"Keys",      "/usr/local/bin/kb-toggle.sh"},
         {"Bluetooth", "/usr/local/bin/bt-pair.sh"},
     };
     int n = sizeof (items) / sizeof (items[0]);

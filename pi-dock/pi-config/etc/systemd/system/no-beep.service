@@ -1,0 +1,20 @@
+# The N100 has no working pcspkr, but snd_hda_intel registers an
+# "HDA Digital PCBeep" input device on the ALC897 codec. The kernel console
+# bell routes SND_BELL to it, so the boot bell comes out of the speakers even
+# with pcspkr blacklisted. There is no "Beep" mixer control to mute, so the
+# bell duration is zeroed on every virtual console instead.
+[Unit]
+Description=Silence the console bell on all VTs
+DefaultDependencies=no
+After=systemd-vconsole-setup.service
+Before=getty.target
+ConditionPathExists=/dev/tty1
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=TERM=linux
+ExecStart=/bin/sh -c 'for v in 1 2 3 4 5 6 7 8 9 10 11 12; do setterm -blength 0 -bfreq 0 < /dev/tty$v > /dev/tty$v 2>/dev/null; done'
+
+[Install]
+WantedBy=sysinit.target

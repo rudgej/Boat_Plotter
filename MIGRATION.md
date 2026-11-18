@@ -984,3 +984,38 @@ sudo nmcli connection modify Bossywifi \
   Pi broadcast, so already-provisioned Shelly modules and sensors keep working.
 - At home the box normally has Ethernet (`enp4s0`) connected, so a home Wi-Fi profile is
   optional — Ethernet stays the default route and the onboard card is then free.
+
+### 7.4 Audio, and the boot bell
+
+`alsactl`, PipeWire and WirePlumber are required for Spotify to make sound. Enable the
+**user** units (they are per-user, not system):
+
+```
+systemctl --user enable --now pipewire.socket pipewire.service \
+                             pipewire-pulse.socket pipewire-pulse.service \
+                             wireplumber.service
+wpctl set-default <sink-id>          # Built-in Audio Analog Stereo
+```
+
+The codec is an **ALC897**; the headphone jack is the analog sink, HDMI is separate.
+
+The boot bell is **not** `pcspkr` — blacklisting it does nothing. `snd_hda_intel`
+registers an `HDA Digital PCBeep` input device on the ALC897 and the kernel console bell
+routes `SND_BELL` to it, so the beep comes out of the speakers. The codec exposes **no
+`Beep` mixer control** to mute, so `no-beep.service` zeroes the bell duration on every VT
+instead (`setterm -blength 0`), and `home/pi/.bash_profile` does the same for the login
+shell.
+
+### 7.5 The on-screen keyboard
+
+`squeekboard` is installed but **cannot work**: it needs
+`input-method-unstable-v1`, which labwc does not implement, so it runs invisibly. Use
+`wvkbd` instead — it drives `zwp_virtual_keyboard_v1`, which wlroots already provides.
+`kb-toggle.sh` starts/stops it and the dock carries a **Keys** button.
+
+### 7.6 Addressing — use `bossy.local`
+
+The box is on DHCP for both interfaces, so its IP changes when the Wi-Fi uplink
+reconnects (it moved from `.221` to `.223` purely because `3cpr` autoconnected). It runs
+Avahi, so **`bossy.local` resolves regardless of the lease**. Boat clients should always
+use the AP address `192.168.10.1`, which is static.

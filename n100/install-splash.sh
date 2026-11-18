@@ -39,7 +39,7 @@ else
     echo 'GRUB_TIMEOUT_STYLE=hidden' >> "$GRUB"
 fi
 
-CMDLINE='quiet splash loglevel=3 vt.global_cursor_default=0'
+CMDLINE='quiet splash loglevel=3 vt.global_cursor_default=0 systemd.show_status=0 rd.systemd.show_status=0'
 if grep -q '^GRUB_CMDLINE_LINUX_DEFAULT=' "$GRUB"; then
     sed -i "s|^GRUB_CMDLINE_LINUX_DEFAULT=.*|GRUB_CMDLINE_LINUX_DEFAULT=\"$CMDLINE\"|" "$GRUB"
 else
