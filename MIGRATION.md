@@ -962,3 +962,25 @@ If you *do* want a true bootable clone, the right target is the **spare 256 GB X
 M.2 enclosure — not a USB stick.
 
 
+
+### 8.4 Multiple stored networks (roaming between home and boat)
+
+NetworkManager holds any number of Wi-Fi profiles and joins whichever is in range, so
+nothing has to be reconfigured when the box moves between the house and the boat. The
+onboard card (`wlp3s0`) carries the uplink profile; the USB card carries the AP.
+
+```
+sudo nmcli connection add type wifi ifname wlp3s0 con-name Bossywifi ssid Bossywifi
+sudo nmcli connection modify Bossywifi \
+  wifi-sec.key-mgmt wpa-psk wifi-sec.psk '<passphrase>' \
+  connection.autoconnect yes connection.autoconnect-priority 10 \
+  ipv4.method auto ipv6.method ignore
+```
+
+- `autoconnect-priority 10` makes the boat uplink preferred over any lower-priority
+  profile when both are visible.
+- Add the home network the same way with a lower priority (or omit the priority).
+- The SSID is **case-sensitive**: `BoatNetwork` (capital B, capital N) matches what the
+  Pi broadcast, so already-provisioned Shelly modules and sensors keep working.
+- At home the box normally has Ethernet (`enp4s0`) connected, so a home Wi-Fi profile is
+  optional — Ethernet stays the default route and the onboard card is then free.
