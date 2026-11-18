@@ -25,8 +25,11 @@ kiosk_env() {
 }
 
 # kiosk_launch <window-class> <url> <profile-dir>
+# Set KIOSK_BROWSER to use a different binary (Spotify needs Google Chrome for
+# its Widevine CDM; Debian's chromium ships none and cannot play DRM audio).
 kiosk_launch() {
     local class="$1" url="$2" profile="$3"
+    local browser="${KIOSK_BROWSER:-chromium}"
 
     kiosk_env
 
@@ -36,7 +39,7 @@ kiosk_launch() {
         sleep 1
     fi
 
-    nohup chromium \
+    nohup "$browser" \
         --app="$url" \
         --class="$class" \
         --ozone-platform=wayland \

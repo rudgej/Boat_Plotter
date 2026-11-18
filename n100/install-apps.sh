@@ -78,7 +78,21 @@ else
     warn "then approve the route AND disable key expiry in the admin console"
 fi
 
-say "5. remaining packages"
+say "5. Google Chrome (Spotify needs Widevine; Debian chromium ships no CDM)"
+# Debian's chromium has no Widevine CDM, so open.spotify.com loads but refuses to
+# play. Google Chrome bundles libwidevinecdm.so. launch-spotify.sh sets
+# KIOSK_BROWSER=/usr/bin/google-chrome-stable for exactly this reason.
+if ! command -v google-chrome-stable >/dev/null 2>&1; then
+    tmp=$(mktemp -d)
+    run curl -sSLo "$tmp/chrome.deb" \
+        https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+    run apt-get install -y "$tmp/chrome.deb"
+    rm -rf "$tmp"
+else
+    ok "google-chrome-stable already installed"
+fi
+
+say "6. remaining packages"
 run apt-get install -y rclone nginx
 ok "rclone (Dropbox manuals) and nginx (manuals on :8081)"
 

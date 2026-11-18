@@ -13,4 +13,4 @@ if pgrep -x wvkbd-mobintl >/dev/null 2>&1; then
     exit 0
 fi
 
-nohup wvkbd-mobintl -L 320 --bg 1a1a1a --fg f0f0f0 >/dev/null 2>&1 &
+nohup wvkbd-mobintl -L 320 >/dev/null 2>&1 &

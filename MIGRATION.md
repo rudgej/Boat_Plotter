@@ -1019,3 +1019,33 @@ The box is on DHCP for both interfaces, so its IP changes when the Wi-Fi uplink
 reconnects (it moved from `.221` to `.223` purely because `3cpr` autoconnected). It runs
 Avahi, so **`bossy.local` resolves regardless of the lease**. Boat clients should always
 use the AP address `192.168.10.1`, which is static.
+
+### 7.7 Spotify needs Google Chrome (Widevine)
+
+Debian's `chromium` package ships **no Widevine CDM**, so `open.spotify.com` logs in,
+renders the library, and then refuses to play DRM audio. Symptom: the player shows a track
+and a 0:00 progress bar that never advances.
+
+Google Chrome bundles `libwidevinecdm.so` at
+`/opt/google/chrome/WidevineCdm/_platform_specific/linux_x64/`. `install-apps.sh` installs
+it, and `launch-spotify.sh` sets:
+
+```
+KIOSK_BROWSER=/usr/bin/google-chrome-stable
+```
+
+`kiosk-launch.sh` honours `KIOSK_BROWSER` for any launcher; everything else keeps using
+chromium. Verified by watching the Spotify progress bar advance in a `grim` capture.
+
+### 7.8 The on-screen keyboard does not appear on tap
+
+`wvkbd` is a manual toggle (**Keys** in the dock) and will **not** pop up when a text field
+is touched. Auto-show requires the compositor to expose an input-method protocol, and
+labwc 0.8.3 does not. Options if that becomes unacceptable:
+
+- live with the **Keys** button; or
+- move the session to a compositor with input-method support (a real change: sway plus an
+  IME, or phosh), which also brings `squeekboard` back into play.
+
+Do **not** pass `--bg`/`--fg` to `wvkbd-mobintl`: the flags colour the background and the
+label with the same palette and you get white-on-white keys. Defaults are correct.
