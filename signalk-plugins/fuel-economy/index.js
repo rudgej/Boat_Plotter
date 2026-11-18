@@ -72,6 +72,8 @@ module.exports = function (app) {
     });
   }
 
+  plugin.schema = {}
+
   plugin.start = function () {
     const now = Date.now();
     const f0 = totalFuelLph();

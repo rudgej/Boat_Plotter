@@ -298,6 +298,9 @@ clear CMOS via the board jumper.
 
    Only the first three are downloadable; the last two are custom and exist only here.
 
+   ⚠️ A custom plugin **must define `plugin.schema`** (even `{}`). Signal K 2.x refuses to load one
+   without it — `fuel-economy` shipped without and silently never ran. Fixed in the repo.
+
    **The restored config already carries the enabled flag** — `derived-data.json`,
    `holdingtank-status.json` and `signalk-shelly2.json` all contain `"enabled": true`. So once a
    plugin is *installed*, restoring `plugin-config-data/` (§2.3) switches it on for you; there is no
@@ -453,6 +456,30 @@ timing tables for 48 MHz and 80 MHz clocks, so it dies with *"No suitable bit ti
 The Linux kernel instead computes timings from the firmware's own constraints
 (BRP 1–512, TSEG1 2–256, TSEG2 2–128), which resolves 250 kbit/s to BRP 40 / TSEG1 14 /
 TSEG2 2 = 88.2 % sample point. `can0` at 250 kbit/s is fine; only that Python path is not.
+
+**The N2K connection, exactly as Signal K stores it.** Adding it by hand is fiddly because the
+element needs `options.type` = `NMEA2000` *and* the device in `subOptions`; get either wrong and
+Signal K logs `Unknown data type for undefined` and the provider never starts. The working block in
+`/home/pi/.signalk/settings.json`:
+
+```json
+"pipedProviders": [{
+  "id": "n2k-can0",
+  "enabled": true,
+  "pipeElements": [{
+    "type": "providers/simple",
+    "options": {
+      "type": "NMEA2000",
+      "subOptions": { "type": "canbus-canboatjs", "interface": "can0",
+                      "uniqueNumber": 31415, "mfgCode": 999 }
+    }
+  }]
+}]
+```
+
+It can be added without the UI: `PUT/POST http://localhost:3000/skServer/providers` (note the
+`/skServer` prefix, **not** `/skAdmin`). Success appears in the log as
+`Successfully connected to can0`.
 
 **Transmitting onto the bus — the plotter is a node, not just a tap**
 
