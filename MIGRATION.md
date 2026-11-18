@@ -87,6 +87,14 @@ and label the ports once it's built; a dongle in the wrong socket on a dark boat
 
 ## 1. OS install
 
+> **Observed on the actual unit (CWWK N100, AMI Aptio).** `Advanced` holds: CPU Configuration,
+> Power & Performance, PCH-FW Configuration, Trusted Computing, **IT8625 Super IO Configuration**,
+> Hardware Monitor, S5 RTC Wake Settings, Network Stack Configuration, CSM Configuration, NVMe
+> Configuration. Note there is **no** *Power Management* or *PCH-IO* under Advanced — "Power &
+> Performance" is CPU power/limits and is **not** AC-power behaviour. The AC-loss setting lives under
+> the **Chipset** tab. The **IT8625** entry is the Super I/O chip that owns COM1/COM2, so the
+> RS232/RS485 mode should be a BIOS option there rather than a board jumper (§6).
+
 **If `Del` does not enter the BIOS, do not fight the timing.** With Windows still installed, reboot
 straight into the firmware from Windows — no key presses needed:
 
@@ -115,8 +123,8 @@ the NVMe — but the BIOS settings are not, and two of them bite only later, on 
 
 | Setting | Menu (AMI BIOS, `Del` at power-on) | Set to | Why |
 |---|---|---|---|
-| **Restore AC Power Loss** — also *After Power Loss*, *AC Power Recovery*, *State After G3* | Advanced / Power Management | **Power On** | **The most important setting on this box.** Boat DC gets cut — breaker, battery switch, brownout. Without it the plotter stays dead until someone physically presses the button, which is no use at anchor or underway. The Pi did this by default; the PC does not. |
-| **ErP / EuP Ready** | Advanced / Power Management | **Disabled** | Energy regs mode cuts standby power and **silently defeats auto power-up** (and Wake-on-LAN). If *Restore AC Power Loss* is set to Power On but the box still won't start, this is almost always why. |
+| **`State After G3`** — a.k.a. *Restore AC Power Loss*, *AC Power Recovery*, *After Power Loss*. **On this board: `Chipset → PCH-IO Configuration`** (right pane reads *"state to go to when power is re-applied after a power failure (G3 state)"*) | Chipset | **`S0 State`** (Power On) | **The most important setting on this box.** Boat DC gets cut — breaker, battery switch, brownout. Without it the plotter stays dead until someone physically presses the button, which is no use at anchor or underway. The Pi did this by default; the PC does not. |
+| **ErP / EuP Ready**, also `Deep Sx` | same menu as above | **Disabled** | Energy regs mode cuts standby power and **silently defeats auto power-up** (and Wake-on-LAN). If *Restore AC Power Loss* is set to Power On but the box still won't start, this is almost always why. |
 | **Wake on LAN** (optional) | Advanced / Power Management | Enabled | lets you wake it over the network; pairs with ErP disabled |
 | **Secure Boot** | Security / Boot | **Disabled** | Debian netinst won't boot otherwise |
 | **Intel VMD / RST** (if shown) | Advanced → System Agent / Storage | **Disabled** | if left enabled the Debian installer sees **no disk at all** — a known N100 trap |
