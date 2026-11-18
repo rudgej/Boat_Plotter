@@ -1089,3 +1089,53 @@ Results appear as `environment.wind.speedApparent` / `angleApparent` with
 `$source: nmea0183-wind`. `directionTrue` / `directionGround` are then supplied by
 `derived-data` using the heading from the CAN bus — which is why heading and wind together
 give true wind, and wind alone does not.
+
+### 8.6 Republishing wind onto NMEA 2000 (PGN 130306)
+
+The wind sensor arrives over UDP, but the *boat* sees it as a normal N2K wind node
+because Signal K republishes it. Without this the plotter only listens on the bus.
+
+**Package name trap:** the npm package is **unscoped** — `signalk-to-nmea2000`
+(`@signalk/signalk-to-nmea2000` returns 404). Install into the server's own module
+directory:
+
+```
+cd /usr/lib/node_modules/signalk-server
+sudo npm install --no-audit --no-fund signalk-to-nmea2000
+```
+
+**Second trap:** the plugin **id** is `sk-to-nmea2000`, not the package name, so the
+config file must be `~/.signalk/plugin-config-data/sk-to-nmea2000.json`. Written under the
+wrong name it is silently ignored — the plugin looks installed but never runs.
+
+**Third trap:** each conversion is an object with an `enabled` flag, not a bare boolean:
+
+```json
+{
+  "enabled": true,
+  "configuration": {
+    "WINDv2": { "enabled": true }
+  }
+}
+```
+
+`WINDv2` is the apparent-wind conversion
+(`environment.wind.angleApparent` + `speedApparent`) and is the right one here, because
+those are the sensor's real measurements. The true-wind variants need data we do not
+measure:
+
+| optionKey | requires | usable now |
+|---|---|---|
+| `WINDv2` | `angleApparent`, `speedApparent` | **yes** |
+| `WIND_TRUE_GROUND` | `directionTrue`, `speedOverGround` | only with a trustworthy SOG |
+| `WIND_TRUE` | `angleTrueWater`, `speedTrue` | no — no speed-through-water sensor |
+
+**Verify** by watching for the PGN in a capture. Note the CAN id is `09FD02xx` / `0DFD0264`,
+so grep for `FD02`; grepping for `1FD02` finds nothing and looks like a failure:
+
+```
+timeout 10 candump -T 8000 can0 | grep -i FD02
+```
+
+A zeroed payload (`FF 00 00 00 00 FA FF FF`) is correct with no wind on the sensor; what
+matters is that frames appear about twice a second.
