@@ -28,8 +28,8 @@ discharge automation.
 ### Credentials (not all in git — see §10)
 
 - SSH: `pi` / (interactive password auth, key not set up)
-- Signal K login: user **`boat`** / password **`bossy`** (admin, R/W)
-- BoatNetwork Wi-Fi: **`BoatNetwork`** / **`B0ssywifi`**
+- Signal K login: user **`boat`** (admin, R/W) — password not recorded here; see the local secrets file
+- BoatNetwork Wi-Fi: SSID **`BoatNetwork`** — password not recorded here
 - Shelly admin password: not tracked here (device-local)
 
 ---
@@ -113,7 +113,7 @@ tar xzf /tmp/pi-config.tar.gz -C pi-dock/pi-config/   # run from repo root
 
 ## 5. BoatNetwork AP (wlan1)
 
-SSID `BoatNetwork` / pass `B0ssywifi`, Pi is `192.168.10.1`, dnsmasq hands out
+SSID `BoatNetwork`, Pi is `192.168.10.1`, dnsmasq hands out
 `.100–.200`. Config in `boatnetwork/` and `pi-config/etc/`:
 
 - `hostapd.conf`, `/etc/default/hostapd` — the AP itself
@@ -280,11 +280,13 @@ State (`suppress_until`, last auto-on date, last GPS position) is persisted to
 
 - `/etc/signalk-automation.env` — real Signal K password; commit the `.example` only.
 - Shelly admin password — device-local.
-- Any Signal K `security.json` password hash — the login (`boat`/`bossy`) is
-  documented above for convenience but the hash file is not tracked.
+- Any Signal K `security.json` password hash — the hash file is not tracked, and
+  the login password is deliberately not recorded here.
 
-The committed `hostapd.conf` does contain the BoatNetwork Wi-Fi passphrase
-(`B0ssywifi`); treat this repo as private.
+The committed `hostapd.conf` is **redacted** — `wpa_passphrase=CHANGE_ME_BOATNETWORK_PSK`.
+Set the real passphrase on the box after restoring (`sudo nano /etc/hostapd/hostapd.conf`)
+and never commit it. Note git history predates the redaction, so treat any
+earlier commit as containing it.
 
 ---
 
@@ -298,7 +300,7 @@ curl -s localhost:3000/signalk/v1/api/vessels/self | head
 
 # login token for scripted writes
 curl -s -X POST localhost:3000/signalk/v1/auth/login \
-  -H 'Content-Type: application/json' -d '{"username":"boat","password":"bossy"}'
+  -H 'Content-Type: application/json' -d '{"username":"boat","password":"$SK_PASSWORD"}'
 
 # automation
 journalctl -u holding-tank-dump -f
@@ -307,7 +309,7 @@ tail -f /var/log/can-watchdog.log /var/log/shelly-watchdog.log
 
 # toggle the discharge valve manually (relay!)
 TOKEN=$(curl -s -X POST localhost:3000/signalk/v1/auth/login \
-  -H 'Content-Type: application/json' -d '{"username":"boat","password":"bossy"}' \
+  -H 'Content-Type: application/json' -d '{"username":"boat","password":"$SK_PASSWORD"}' \
   | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])')
 curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"value":true}' \

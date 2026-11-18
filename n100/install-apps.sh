@@ -80,7 +80,7 @@ cat <<'STILL'
 
 ==> now by hand in the browser (cannot be scripted)
     1. Signal K admin  http://localhost:3000
-         - first login: create user boat / bossy
+         - first login: create the Signal K admin user (see local secrets file)
          - Data Connections -> Add -> NMEA 2000 -> SocketCAN -> can0
          - Data Connections -> Add -> Serial -> /dev/rs485-1 @ 4800  (input only)
          - Data Connections -> Add -> Serial -> /dev/rs485-2 @ 38400 (input only)

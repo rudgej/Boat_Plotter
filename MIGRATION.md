@@ -560,7 +560,7 @@ sudo install -m 755 pi-dock /usr/local/bin/pi-dock
 ## 8. BoatNetwork AP (AIC8800 USB dongle)
 
 Config unchanged (`boatnetwork/` + `pi-config/etc/{hostapd,default,NetworkManager}`):
-SSID `BoatNetwork` / `B0ssywifi`, box at `192.168.10.1`, DHCP `.100–.200`.
+SSID `BoatNetwork`, box at `192.168.10.1`, DHCP `.100–.200`. Password: see the local secrets file, not this repo.
 Keep `NetworkManager/conf.d/boatnetwork-unmanaged.conf`. The dongle may enumerate as `wlan1` —
 confirm with `ip link` and adjust `boatnetwork-up.sh` if the name differs.
 
