@@ -1199,3 +1199,29 @@ Sensor-side settings to match: SSID `BoatNetwork`, host `192.168.10.1`, port `10
 `signalk-zones/set-zones.py` writes `meta.zones` for the KIP gauge bands against
 `http://localhost:3000`. Run as `pi`, no auth needed on the box. It reports each path it
 touches — 10/10 applied is the expected result. Re-run after any Signal K reinstall.
+
+### 7.9 Keeping the console clean (splash, then app — no scrolling text)
+
+`quiet splash systemd.show_status=0` is **not enough**. Plymouth quits a few seconds in,
+and everything the boot then prints lands on the active VT, so you get a short splash
+followed by a wall of text before the kiosk appears. Three things are needed together:
+
+1. **Move all console output off the kiosk VT.** In `/etc/default/grub`:
+
+   ```
+   GRUB_CMDLINE_LINUX="console=tty3"
+   ```
+
+   Kernel and systemd messages now go to `tty3` (reachable with Ctrl+Alt+F3) and `tty1`
+   stays clean for Plymouth and the compositor. This is the only safe way; do **not** try
+   to hold the splash by making `getty@tty1` want `plymouth-quit-wait.service` — that
+   ordering can deadlock the boot, and this machine has already hung once on a bad unit
+   dependency.
+2. **Suppress the agetty banner** in the autologin drop-in:
+   `--autologin pi --noclear --noissue`.
+3. **Clear and redirect the session** in `home/pi/.bash_profile`: wipe the VT, then
+   `exec labwc >/var/log/labwc.log 2>&1` so compositor chatter goes to a file rather than
+   the screen.
+
+Verify after a reboot: splash, then the app, with no text between. `Ctrl+Alt+F3` should
+show the boot log.
