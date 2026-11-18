@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Fairline
+Description=Fairline Nautical Crest splash for the boat plotter
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/fairline
+ScriptFile=/usr/share/plymouth/themes/fairline/fairline.script

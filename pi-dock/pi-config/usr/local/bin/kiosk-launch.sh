@@ -8,11 +8,13 @@
 # the current uid keeps this correct no matter which user or uid the session
 # ends up with.
 #
-# `kiosk_launch` starts Chromium as a fullscreen app window. `--start-fullscreen`
-# is used deliberately instead of relying on a labwc window rule: Chromium on
-# native Wayland reports an app_id that does not always match `--class`, so
-# rules are unreliable. Relaunching is also the only reliable way to raise a
-# native-Wayland window (xdotool/wmctrl cannot see them).
+# `kiosk_launch` starts Chromium as an app window. `--start-maximized`, not
+# `--start-fullscreen`: a fullscreen window covers the whole output and ignores
+# the dock's layer-shell exclusive zone, which hides AvNav's bottom toolbar
+# behind the dock. Maximised is constrained to the usable area instead.
+#
+# Relaunching is also the only reliable way to raise a native-Wayland window
+# (xdotool/wmctrl cannot see them).
 
 kiosk_env() {
     export DISPLAY=:0
@@ -38,7 +40,7 @@ kiosk_launch() {
         --app="$url" \
         --class="$class" \
         --ozone-platform=wayland \
-        --start-fullscreen \
+        --start-maximized \
         --touch-events=enabled \
         --enable-virtual-keyboard \
         --no-first-run \

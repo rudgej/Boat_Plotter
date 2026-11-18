@@ -1,0 +1,11 @@
+# Static splash: the Fairline crest on a light background.
+# Full-bleed is correct here because splash.png is generated at 1920x1200,
+# the panel's native resolution.
+screen_width = Window.GetWidth();
+screen_height = Window.GetHeight();
+
+background = Image("splash.png").Scale(screen_width, screen_height);
+background_sprite = Sprite(background);
+background_sprite.SetX(0);
+background_sprite.SetY(0);
+background_sprite.SetZ(-100);

@@ -41,7 +41,11 @@ int main (int argc, char **argv)
 
     gtk_layer_init_for_window (GTK_WINDOW (win));
     gtk_layer_set_namespace (GTK_WINDOW (win), "pi-dock");
-    gtk_layer_set_layer (GTK_WINDOW (win), GTK_LAYER_SHELL_LAYER_OVERLAY);
+    /* LAYER_TOP, not LAYER_OVERLAY: wlroots only honours an exclusive zone on
+     * the TOP/BOTTOM layers. On OVERLAY the zone is ignored, the dock paints
+     * over the bottom 64 px of every window, and AvNav's bottom toolbar ends up
+     * hidden behind it. */
+    gtk_layer_set_layer (GTK_WINDOW (win), GTK_LAYER_SHELL_LAYER_TOP);
     /* Anchor left + right so the dock spans the full screen width. */
     gtk_layer_set_anchor (GTK_WINDOW (win), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
     gtk_layer_set_anchor (GTK_WINDOW (win), GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);

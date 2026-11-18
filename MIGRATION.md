@@ -640,6 +640,49 @@ repo to call the real binaries directly. Verify with:
 - `launch-plotter.sh` = fullscreen plotter window (AvNav). Update ports in the launch scripts if the new box serves on different ones.
 - Touchscreen: USB HID touch + HDMI on Intel i915 — out of the box.
 
+### 7.1 The dock must not cover AvNav's bottom bar
+
+`dock.c` reserves 64 px with `gtk_layer_set_exclusive_zone`. **wlroots only honours an
+exclusive zone on the `TOP`/`BOTTOM` layers.** On `LAYER_OVERLAY` the zone is ignored, the
+dock paints over the last 64 px of whatever is behind it, and AvNav's whole bottom data
+panel (DTG/ETA/BRG/SOG/WPT/POS) disappears underneath it. Two changes are needed together:
+
+- `dock.c`: `GTK_LAYER_SHELL_LAYER_TOP`, not `..._LAYER_OVERLAY`
+- `kiosk-launch.sh`: `--start-maximized`, not `--start-fullscreen`. A fullscreen window
+  covers the entire output and ignores the exclusive zone regardless of layer.
+
+Rebuild the dock and relaunch AvNav, then confirm with `grim`:
+
+```
+sudo gcc pi-dock/dock.c -o /usr/local/bin/pi-dock \
+    $(pkg-config --cflags --libs gtk+-3.0 gtk-layer-shell-0)
+```
+
+### 7.2 Boot presentation — splash instead of scrolling text
+
+`n100/install-splash.sh` installs Plymouth with the Fairline crest
+(`n100/plymouth/splash.png`, generated 1920×1200 from
+`pi-dock/Fairline Nautical Crest Logo.png`) and silences the console:
+
+- `GRUB_TIMEOUT=0` + `GRUB_TIMEOUT_STYLE=hidden` — no menu
+- `quiet splash loglevel=3 vt.global_cursor_default=0` — no kernel text, no cursor
+- the splash is drawn on a **light** background because the crest and wordmark are navy
+
+Verify after a reboot: `journalctl -b | grep -c plymouth` is non-zero and
+`systemctl --failed` is empty.
+
+### 7.3 The boot bell
+
+The N100's Super I/O drives a PC speaker and the kernel loads `pcspkr`, so the console
+bell sounds on every login. Two files silence it:
+
+- `/etc/modprobe.d/nobeep.conf` — `blacklist pcspkr`, `blacklist snd_pcsp`
+- `home/pi/.bash_profile` — `setterm -blength 0`
+
+`.bash_profile` **and** the `getty@tty1` autologin drop-in live in `pi-config/`; they were
+previously created by hand on the box only, so a restore used to lose kiosk autostart
+entirely.
+
 ---
 
 ## 8. Wi-Fi: uplink + BoatNetwork AP (two radios)
