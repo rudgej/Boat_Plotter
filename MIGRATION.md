@@ -91,8 +91,13 @@ and label the ports once it's built; a dongle in the wrong socket on a dark boat
 straight into the firmware from Windows — no key presses needed:
 
 ```
-shutdown /r /fw /t 0          # admin Command Prompt / Terminal
+shutdown /r /fw /t 0          # MUST be an elevated prompt
 ```
+
+**`Error 1314: A required privilege is not held by the client`** means the prompt is *not* elevated —
+use **Win+X → Terminal (Admin)**, not the Start-menu Command Prompt. If elevation is a hassle, skip
+it: **Start menu → power icon → hold `Shift` → Restart → Troubleshoot → Advanced options → UEFI
+Firmware Settings → Restart** needs no admin at all.
 
 or *Settings → System → Recovery → Advanced startup → Restart now → Troubleshoot → Advanced options
 → UEFI Firmware Settings*. If `/fw` reports "not supported", use the GUI route.
