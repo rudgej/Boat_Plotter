@@ -80,7 +80,12 @@ ports**; AvNav reads everything through Signal K rather than opening the ports i
   safety-critical (alarm, value blanked); GPS and wind are warnings. See its `README.md`.
 - **`signalk-zones/`** — `set-zones.py` writes the gauge bands; needs a login token, see `ZONES.md`.
 - **`signalk-plugins/`** — the `enginetrends-status` plugin plus wind/GPS diagnostic scripts.
-- **`seakeeper-esp/`** — ESP32 firmware for the Seakeeper interface.
+- **`seakeeper-esp/`** — flashing kit for the Seakeeper bridge: a WT32-ETH01
+  running [martin-ger/esp32_ethernet_router](https://github.com/martin-ger/esp32_ethernet_router)
+  **unmodified**. `SETUP.md` has the wiring and configuration; `flash.sh` and the
+  prebuilt binaries are here. There is no bespoke firmware — see
+  [seakeeper-bridge](https://github.com/rudgej/seakeeper-bridge) for what the
+  bridge does and why it has no source of its own.
 - **`pi-dock/pi-config/home/pi/.signalk/settings.json`** — Signal K's own config (data connections
   and security). Without this a restored Signal K has no data connections at all.
 - **`shelly-migration-baseline.md`** — Shelly switch migration notes.
