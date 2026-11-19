@@ -515,13 +515,16 @@ class SkClient:
         except ImportError:
             log("websocket-client missing; running on HTTP polling only")
             return
-        url = self.ws_url + "/signalk/v1/stream?subscribe=self"
-        if not self.token:
-            self.login()
-        if self.token:
-            url += "&token=" + self.token
         while not self._stop.is_set():
             try:
+                # Build the URL per attempt, not once: a Signal K restart
+                # invalidates existing tokens ("invalid signature"), and a
+                # cached URL would retry with the dead token forever.
+                if not self.token:
+                    self.login()
+                url = self.ws_url + "/signalk/v1/stream?subscribe=self"
+                if self.token:
+                    url += "&token=" + self.token
                 ws = websocket.create_connection(url, timeout=20)
                 log("websocket connected")
                 while not self._stop.is_set():
@@ -533,6 +536,8 @@ class SkClient:
             except Exception as e:  # noqa: BLE001
                 if not self._stop.is_set():
                     log("websocket error: %s (reconnecting)" % e)
+                    # Drop the token so the next attempt logs in again.
+                    self.token = None
                     time.sleep(5)
 
     def _ingest(self, raw):

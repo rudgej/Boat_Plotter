@@ -403,8 +403,17 @@ sudo systemctl daemon-reload
 ```
 sudo systemctl enable can0-nmea2000.service can-watchdog.timer \
   shelly-watchdog.timer holding-tank-dump.service cockpit-light.service \
-  memwatch.timer set-timezone.timer bt-hifi.service manuals-sync.timer
+  memwatch.timer set-timezone.timer bt-hifi.service manuals-sync.timer \
+  engine-trends.service
 ```
+
+> `cp -a .../home/. /home/` above also restores `~/.signalk/settings.json` (all the data
+> connections), `~/.signalk/node_modules/{holdingtank,enginetrends}-status` and their
+> `plugin-config-data`. **Start Signal K after this, not before** — the plugin and provider
+> list are only read at startup.
+>
+> `engine-trends` needs `pi` in the `dialout` group for the serial ports (§6.4); that is a
+> group membership, not a file, so it is not restored by a `cp`.
 
 > **Do not enable `boatnetwork.service` / `boatnetwork-dnsmasq.service`.** Those were the
 > Pi's hostapd + dedicated-dnsmasq pair on `wlan1`. On the N100 the AP is owned by
@@ -618,11 +627,48 @@ the DB9, or a manual RTS-driven transceiver with the driver toggling RTS. Do not
    Wiring is the A/B differential pair plus signal ground; short runs, so no bus termination.
    Fallback if the ports cannot be switched: a USB→RS485 adapter per port, at the cost of two USB
    sockets — see the port budget in §0.
-3. Signal K → *Data Connections → Add → Serial* per port, **input only**:
-   - `/dev/rs485-1` @ 4800 8N1
-   - `/dev/rs485-2` @ 38400 8N1
-4. `[TODO-CONFIRM]` if a port stays silent, the port↔instrument mapping is reversed or the rate
+3. **Who owns the ports: Signal K, and only Signal K.** Configured 2026-11-19.
+   Two processes cannot read one tty, so this had to be decided. AvNav also runs as a user in
+   `dialout` (`avnav`) and its `avnav_server.xml` already carries the readers — leave them
+   **commented out**; AvNav gets its data from Signal K instead:
+   ```xml
+   <!-- <AVNSerialReader name="rs485-1" port="/dev/rs485-1" baud="4800"/> -->
+   ```
+4. `pi` must be in the **`dialout`** group. It was not, which is the trap: the ports are
+   `root:dialout`, Signal K runs as `pi`, and every connection failed with `EACCES` even though the
+   port looked present and idle.
+   ```
+   sudo usermod -aG dialout pi
+   sudo systemctl restart signalk
+   ```
+5. The two providers are in `~/.signalk/settings.json` (captured in the repo at
+   `pi-dock/pi-config/home/pi/.signalk/settings.json`). A serial NMEA 0183 input is **two** pipe
+   elements — a `providers/serialport` feeding `providers/nmea0183-signalk` — and the option names
+   are `device` and `baudrate`, not `baudRate`:
+   ```json
+   { "id": "nmea0183-rs485-1", "enabled": true,
+     "pipeElements": [
+       { "type": "providers/serialport",
+         "options": { "device": "/dev/rs485-1", "baudrate": 4800 } },
+       { "type": "providers/nmea0183-signalk", "options": {} } ] }
+   ```
+   `/dev/rs485-2` is the same at **38400**. The schema is the one in
+   `signalk-server/settings/volare-serial-settings.json` — copy from there rather than guessing.
+6. **Edit `settings.json` only while Signal K is stopped.** The server rewrites that file itself,
+   so an edit against a running instance can be silently lost.
+7. Verify — the ports should be held by `node` running as `pi`:
+   ```
+   sudo fuser -v /dev/ttyS0 /dev/ttyS1
+   # /dev/ttyS0:   pi   <pid> F.... node
+   ```
+   No serial hardware is connected yet, so an open-but-silent port is the correct result.
+8. `[TODO-CONFIRM]` if a port stays silent, the port↔instrument mapping is reversed or the rate
    differs — try the other COM and the other rate before assuming a wiring fault.
+
+> **Known trap:** a Signal K restart invalidates existing tokens. Any WebSocket client that caches
+> its token retries forever with `401 invalid signature`. `engine-trends` hit exactly this; its
+> client now drops the token and re-logs in on every reconnect. Check other long-lived clients for
+> the same pattern before trusting them across a restart.
 
 ---
 

@@ -1,0 +1,7 @@
+{
+  "name": "enginetrends-status",
+  "version": "1.0.0",
+  "description": "Registers engineHealth.* paths written by the engine-trends daemon so Signal K 2.x accepts the PUTs",
+  "main": "index.js",
+  "keywords": ["signalk-node-server-plugin"]
+}
