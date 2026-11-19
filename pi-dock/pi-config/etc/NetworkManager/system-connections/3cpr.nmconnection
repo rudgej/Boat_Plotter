@@ -9,6 +9,12 @@ interface-name=wlp3s0
 [wifi]
 mode=infrastructure
 ssid=3cpr
+# Never randomise the MAC. With a per-scan random MAC the UniFi AP accepted the
+# association, then deauthenticated 2s later with reason 6
+# (CLASS2_FRAME_FROM_NONAUTH_STA). NetworkManager read that as a bad key, asked
+# for a new one, found no agent, and gave up - so the box booted with no network
+# at all. Pinning the MAC fixes it.
+cloned-mac-address=permanent
 
 [wifi-security]
 key-mgmt=wpa-psk

@@ -10,6 +10,9 @@ interface-name=wlp3s0
 [wifi]
 mode=infrastructure
 ssid=Bossywifi
+# Pin the MAC - see 3cpr.nmconnection. Random MAC + this AP = deauth reason 6,
+# which NetworkManager reports as "no secrets" and then gives up entirely.
+cloned-mac-address=permanent
 
 [wifi-security]
 key-mgmt=wpa-psk
