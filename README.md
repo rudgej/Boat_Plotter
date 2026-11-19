@@ -107,18 +107,27 @@ These are real and understood, not mysteries — details in `MIGRATION.md` §14.
 
 ## If the box boots to a bare login prompt instead of the kiosk
 
-Check these in order — both have bitten us.
+Check these in order — all three have bitten us.
 
-1. **Is the log redirect failing?** `~/.bash_profile` execs `labwc` and used to redirect to
+1. **Is the kernel console on tty1?** This was the real cause on 2026-11-19. `/etc/default/grub` had
+   `GRUB_CMDLINE_LINUX="console=tty3"`, which makes **VT3** the displayed terminal at boot and
+   auto-spawns `getty@tty3`. The kiosk still starts on tty1, but VT1 is not the foreground terminal,
+   so labwc cannot take the display, dies, and you are left looking at the tty3 login prompt.
+   It must be `console=tty1`. Verify with `cat /proc/cmdline`, fix with
+   `sed -i 's/console=tty3/console=tty1/' /etc/default/grub && update-grub`, then reboot.
+   The working file is captured at `pi-dock/pi-config/etc/default/grub`.
+2. **Is `sudo fgconsole` printing `1`?** Even with the cmdline correct, a manual VT switch leaves
+   labwc unable to start. Fix with `sudo chvt 1` then `sudo systemctl restart getty@tty1`.
+3. **Is the log redirect failing?** `~/.bash_profile` execs `labwc` and used to redirect to
    `/var/log/labwc.log`. `/var/log` is root-owned, so `pi` cannot create that file, bash never runs
    the `exec`, and you get the login prompt. It now logs to `~/labwc.log`. If `~/labwc.log` does not
    exist after a boot, the shell never got that far.
-2. **Is the wrong VT in the foreground?** `sudo fgconsole` must print `1`. labwc can only take the
-   display from the active terminal; if it has been switched to VT 2/3, labwc fails with
-   `Timeout waiting session to become active` / `Failed to start a DRM session` and exits. Fix with
-   `sudo chvt 1` then `sudo systemctl restart getty@tty1`.
 
-HDMI output is **HDMI-A-2** on this box (`HDMI-A-1` is unconnected); it runs at 1920×1200.
+`sudo fgconsole` and `/proc/cmdline` together explain almost every "no kiosk" case.
+
+HDMI output is **HDMI-A-2** on this box (`HDMI-A-1` is unconnected); it runs at 1920×1200. Which
+HDMI port you use is irrelevant to the kiosk — all VTs share every connected output.
+
 
 
 ## Rebuilding from scratch
