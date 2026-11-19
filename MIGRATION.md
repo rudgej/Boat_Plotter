@@ -862,6 +862,35 @@ critical path.
 
 ---
 
+### 8.3 DNS belongs to dhcpcd — and unplugging Ethernet used to kill it
+
+`/etc/NetworkManager/NetworkManager.conf` has **`[ifupdown] managed=false`**, so NetworkManager does
+**not** manage `enp4s0`/`enp2s0`; Ethernet is handled by **ifupdown + dhcpcd**, and NM only manages
+the Wi-Fi radios. That makes **dhcpcd the owner of `/etc/resolv.conf`**.
+
+Consequence, hit on 2026-11-19: unplugging the Ethernet cable made dhcpcd regenerate
+`/etc/resolv.conf` **empty**. The box still had internet over Wi-Fi (`ping 1.1.1.1` fine,
+`curl http://1.1.1.1` returned 301) but **no DNS at all** — `curl https://…` failed instantly and
+`getent hosts` returned nothing. Dropbox sync, o-charts downloads and `apt` would all fail while
+looking like a network outage.
+
+Fix applied: static nameservers in `/etc/dhcpcd.conf`, so DNS survives with or without a lease.
+
+```
+static domain_name_servers=192.168.1.1 1.1.1.1
+```
+
+Captured in the repo at `pi-dock/pi-config/etc/dhcpcd.conf`.
+
+**Diagnose in this order** — it saves time:
+
+```
+ls -l /etc/resolv.conf     # the header names whoever generated it ("dhcpcd" vs "NetworkManager")
+cat /etc/resolv.conf       # no "nameserver" line = this is the fault
+getent hosts example.com   # empty = confirmed DNS
+ping -c2 1.1.1.1           # replies = the internet is fine, it is only name resolution
+```
+
 ## 9. Shelly automation
 
 - **Install `signalk-shelly2` from the Appstore first** (see the plugin inventory in §2.9). Restoring
