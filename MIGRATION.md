@@ -1033,8 +1033,8 @@ unknown is marked `[TODO-CONFIRM]` and must be settled on the boat.
 |---|---|
 | **Dropbox sync** | built: one-way **Dropbox → local** manuals library via rclone + systemd timer, served offline by nginx on **:8081**. Files and procedure in `pi-dock/dropbox/README.md`; only the one-time `rclone config` login is manual |
 | **Grafana** | `pi-dock/grafana/README.md` — port **3001** (3000 is Signal K); install, data source and dashboard definitions `[TODO-CONFIRM]`, none captured |
-| **KIP dashboards** | two survive and are committed: **`Engine`** (`kip-config.json`) and **`default`** (`11.0.0.json`); the other ~3 are lost — `pi-dock/kip/DASHBOARDS.md` |
-| **Gauge zones** | `set-zones.py` already holds the real paths + bands — `signalk-zones/ZONES.md`; whether it was run on the Pi `[TODO-CONFIRM]` (idempotent, run once) |
+| **KIP dashboards** | **CLOSED 2026-11-19** — two survive in the repo; the owner will rebuild the rest by hand in the editor at `http://bossy.local:3000/@mxtommy/kip/`. Log into Signal K inside KIP first so the rebuild is stored server-side. See `pi-dock/kip/DASHBOARDS.md` |
+| **Gauge zones** | **DONE 2026-11-19** — all 10 paths applied and verified on the N100, and confirmed to survive a Signal K restart. Writes need a bearer token because security is enabled, so run it via `/etc/signalk-automation.env`. See `signalk-zones/ZONES.md` |
 | **fuel-economy** | paths documented in §2.9; instance mapping `[TODO-CONFIRM]` |
 
 **Review note (verified against the repo, not taken on trust):** the handover's technical claims
@@ -1319,8 +1319,22 @@ Sensor-side settings to match: SSID `BoatNetwork`, host `192.168.10.1`, port `10
 ### 8.9 Gauge zones
 
 `signalk-zones/set-zones.py` writes `meta.zones` for the KIP gauge bands against
-`http://localhost:3000`. Run as `pi`, no auth needed on the box. It reports each path it
-touches — 10/10 applied is the expected result. Re-run after any Signal K reinstall.
+`http://localhost:3000`.
+
+**Auth is required.** Signal K security is enabled on this box, so unauthenticated `PUT`s return
+`401 Unauthorized`. The script logs in itself from `SIGNALK_USER` + `SIGNALK_PASSWORD` (or uses
+`SIGNALK_TOKEN`). Run it with the same env file the automation units use:
+
+```bash
+sudo bash -c 'set -a; . /etc/signalk-automation.env; set +a; python3 /tmp/set-zones.py'
+```
+
+It reports each path it touches and reads the value back — `10/10 zones applied and verified` is the
+expected result, and `readback OK` on each line rules out a silent failure.
+
+Zones are persisted in `~/.signalk/baseDeltas.json`, which Signal K replays at startup, so they
+survive restarts and reinstalls of the plugin tree. Re-run after a full Signal K reinstall anyway,
+since `baseDeltas.json` lives in `.signalk`.
 
 ### 7.9 Keeping the console clean (splash, then app — no scrolling text)
 

@@ -10,9 +10,39 @@ Zones are stored in SI units (Signal K convention):
 
 Each zone: {"lower": .., "upper": .., "state": "nominal|alert|warn|alarm|emergency"}
 """
-import json, sys, urllib.request
+import json, os, sys, urllib.request
 
-BASE = "http://localhost:3000/signalk/v1/api/vessels/self"
+ORIGIN = os.environ.get("SIGNALK_URL", "http://localhost:3000").rstrip("/")
+BASE = f"{ORIGIN}/signalk/v1/api/vessels/self"
+
+# Signal K security is enabled on this boat, so every write needs a bearer
+# token. Supply SIGNALK_TOKEN directly, or SIGNALK_USER + SIGNALK_PASSWORD and
+# the script will log in for you. /etc/signalk-automation.env already holds the
+# same credentials the systemd units use.
+_TOKEN = None
+
+
+def token():
+    global _TOKEN
+    if _TOKEN is not None:
+        return _TOKEN
+    env_token = os.environ.get("SIGNALK_TOKEN")
+    if env_token:
+        _TOKEN = env_token
+        return _TOKEN
+    user = os.environ.get("SIGNALK_USER")
+    password = os.environ.get("SIGNALK_PASSWORD")
+    if not (user and password):
+        _TOKEN = ""
+        return _TOKEN
+    body = json.dumps({"username": user, "password": password}).encode()
+    req = urllib.request.Request(
+        f"{ORIGIN}/signalk/v1/auth/login", data=body, method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        _TOKEN = json.load(r)["token"]
+    return _TOKEN
 
 # --- zone definitions (converted from user's degC / bar / m / V) ---
 TEMP = [  # degC: 0-85.9 nominal, 85.9-92.9 alert, 92.9+ warn (gapless)
@@ -62,24 +92,45 @@ TARGETS = [
 def put_zones(path, zones):
     url = f"{BASE}/{path}/meta/zones"
     data = json.dumps({"value": zones}).encode()
-    req = urllib.request.Request(
-        url, data=data, method="PUT",
-        headers={"Content-Type": "application/json"},
-    )
+    headers = {"Content-Type": "application/json"}
+    tok = token()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
+    req = urllib.request.Request(url, data=data, method="PUT", headers=headers)
     with urllib.request.urlopen(req, timeout=10) as r:
         return r.status
 
 
+def read_zones(path):
+    """Read back what the server actually holds for this path."""
+    url = f"{BASE}/{path}"
+    headers = {}
+    tok = token()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.load(r).get("meta", {}).get("zones")
+    except Exception:
+        return None
+
+
 def main():
     ok = 0
+    if not token():
+        print("  no SIGNALK_TOKEN / SIGNALK_USER+PASSWORD - writes will 401")
     for path, zones in TARGETS:
         try:
             status = put_zones(path, zones)
-            print(f"  {status}  {path}")
-            ok += 1
+            back = read_zones(path)
+            match = "readback OK" if back == zones else "READBACK MISMATCH"
+            print(f"  {status}  {path}  {match}")
+            if back == zones:
+                ok += 1
         except Exception as e:
             print(f"  FAIL  {path}: {e}")
-    print(f"\n{ok}/{len(TARGETS)} zones applied")
+    print(f"\n{ok}/{len(TARGETS)} zones applied and verified")
 
 
 if __name__ == "__main__":
