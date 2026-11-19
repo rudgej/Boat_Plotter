@@ -1312,6 +1312,20 @@ parameter, no formatting in KIP.
   temporary database, and asserts a baseline was established and one REVIEW was raised. Use it
   after any edit; it needs no Signal K and no engine.
 - `--status` prints baselines/sessions/reviews from the live database.
+- `engine-trends/live-check.py` prints live values, the last log lines and row counts — the quick
+  "is it actually seeing the engine" check. `engine-trends/measure-ramp.py` samples twice and
+  reports coolant rate and whether RPM is high enough to open a trip.
+
+**After bench-testing with a simulator, wipe the database** — the statistics are correct but
+describe an engine that does not exist, and the first real run would be compared against them:
+
+```
+bash engine-trends/reset.sh     # prompts; --force to skip
+```
+
+It stops the service first, deletes `.db`, `.db-wal` and `.db-shm` (SQLite will happily recover
+old content from the WAL otherwise), then restarts. Deleting the file under a *running* daemon
+leaves it with in-memory baselines it would write straight back, which is why it must stop first.
 
 ---
 
