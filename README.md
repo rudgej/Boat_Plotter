@@ -93,9 +93,15 @@ These are real and understood, not mysteries — details in `MIGRATION.md` §14.
 2. **o-charts on `:8083` refuses tailnet clients.** TCP connects, then the provider never reads the
    request — sockets sit in `CLOSE-WAIT` with the bytes unread. LAN and localhost are fine. Workaround:
    `ssh -N -L 8083:127.0.0.1:8083 pi@bossy`, then use `http://localhost:8083`.
-3. **RS485 needs an auto-direction transceiver.** Both ports are wired and Signal K holds them
-   open (`/dev/rs485-1`→`ttyS0` @4800, `/dev/rs485-2`→`ttyS1` @38400), but `ioctl(TIOCSRS485)`
-   returns `ENOTTY`, so the UART cannot flip the driver direction in software.
+3. **RS485 receives nothing yet — the cable pinout, not the software.** Both ports are wired and
+   Signal K holds them open (`/dev/rs485-1`→`ttyS0` @4800, `/dev/rs485-2`→`ttyS1` @38400). A 60-second
+   passive listen gave zero bytes with zero framing errors, so the line is genuinely silent rather
+   than garbled. A loopback test between the two ports (`tools/rs485-loopback.py`) then showed
+   `tx:32 rx:0` in both directions: the UARTs transmit, and plugging the cable in asserted CTS/DSR,
+   so there *is* an electrical path — but the data pair never carried anything. Cause found: the test
+   cable had **no pin 1**, so A or B was never connected. Re-test with a full breakout.
+   `ioctl(TIOCSRS485)` returns `ENOTTY`, so the direction switching is done by the transceiver, not
+   the UART.
 4. **KIP will be signed out by any reboot.** Signal K signs tokens with a random key generated at
    startup unless `SECRETKEY` is set, so every restart invalidates them — verified: 200 before a
    restart, 401 after. Set `SECRETKEY` in the `signalk` unit environment to make logins stick.
