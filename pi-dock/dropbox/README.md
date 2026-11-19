@@ -23,6 +23,28 @@ every 6 hours covers it. A run with nothing to do logs a single line.
 300-page engine manual pages and scrolls in the kiosk browser instead of having to be fetched whole
 first. That difference is very obvious on a slow link and in 200 MB PDFs.
 
+## Kiosk UI — big type and a way back out
+
+The index is nginx `autoindex`, which cannot be restyled directly, so
+`/etc/nginx/manuals-index.css` is appended to every index response with `add_after_body`. It
+carries both a `<style>` block and a short `<script>` that rebuilds the generated `<pre>` into
+full-width rows (folder names bold with a chevron, dates dropped — they are noise on a
+touchscreen). The heading is rewritten from `Index of /Engines/` to **Boat Manuals › Engines**.
+
+PDFs get a wrapper page with a large **◀ Back** bar, because the kiosk runs Chromium with `--app`
+and therefore has **no toolbar and no Back button** — without the wrapper, tapping a manual on a
+touchscreen is a one-way trip into the PDF viewer. The wrapper iframes the real file from `/raw/`,
+so `Range` still works.
+
+Two traps in that config, both found by testing rather than assumption:
+
+- A `location ~* \.pdf$` inherits the type from the extension map, so `default_type` is ignored and
+  the HTML wrapper was served as `application/pdf`. Fixed with `types { text/html pdf; }` inside
+  the location.
+- `add_after_body` at **server** level also appends to `/raw/` PDFs and corrupts them. It is scoped
+  to `location /` only. Verify with a full (non-Range) download: served size must equal the file
+  size.
+
 ## One-time setup (needs your Dropbox login — cannot be scripted)
 
 **Set up rclone on a machine with a browser, then copy the config to the boat.** The OAuth token

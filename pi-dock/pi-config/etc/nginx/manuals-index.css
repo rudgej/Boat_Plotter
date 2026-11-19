@@ -1,0 +1,86 @@
+<style>
+/* Injected into nginx's autoindex output by the manuals site config
+   (add_after_body). CSS applies wherever it appears, so this is appended to
+   the end of the body. Read on a touchscreen at arm's length: big type,
+   full-width rows. */
+html { font-size: 20px; }
+body {
+    margin: 0;
+    padding: 24px 28px 90px;
+    background: #fbfaf7;
+    color: #10223a;
+    font-family: system-ui, "DejaVu Sans", sans-serif;
+}
+h1 {
+    font-size: 1.8rem;
+    line-height: 1.25;
+    font-weight: 700;
+    margin: 0 0 18px;
+    padding-bottom: 14px;
+    border-bottom: 3px solid #10223a;
+    word-break: break-word;
+}
+/* Rows built by the script below: one folder/file per line, whole row tappable. */
+.rows { display: block; }
+.rows a.row {
+    display: block;
+    font-size: 1.55rem;
+    line-height: 1.3;
+    padding: 18px 14px;
+    color: #0b4f9c;
+    text-decoration: none;
+    border-bottom: 1px solid #e2ded4;
+    border-radius: 10px;
+    word-break: break-word;
+}
+.rows a.row:active, .rows a.row:hover { background: #dce8f5; }
+.rows a.dir { font-weight: 700; color: #0a3a70; }
+.rows a.dir::before { content: "\25B8  "; color: #7d94ad; }
+.rows a.up { color: #5b6a7d; }
+.rows a.file::before { content: "\2022  "; color: #9aa8b8; }
+/* Fallback if the script does not run: still large, just less tidy. */
+pre { font-family: inherit; font-size: 1.3rem; line-height: 2; margin: 0; }
+a { color: #0b4f9c; text-decoration: none; }
+a[href$="/"] { font-weight: 700; }
+hr { border: 0; border-top: 1px solid #d6d2c8; margin: 18px 0; }
+</style>
+<script>
+(function () {
+  /* Friendlier heading: "Index of /Engines/" -> "Boat Manuals › Engines". */
+  var h1 = document.querySelector('h1');
+  if (h1) {
+    var parts = h1.textContent.replace(/^Index of\s*/, '')
+      .split('/').filter(function (s) { return s.length > 0; });
+    h1.textContent = 'Boat Manuals' + (parts.length ? '  \u203A  ' + parts.join('  \u203A  ') : '');
+  }
+  var pre = document.querySelector('pre');
+  if (!pre) { return; }
+  var atRoot = (window.location.pathname === '/' || window.location.pathname === '');
+  var rows = document.createElement('div');
+  rows.className = 'rows';
+  var links = pre.querySelectorAll('a');
+  for (var i = 0; i < links.length; i++) {
+    var a = links[i];
+    var href = a.getAttribute('href') || '';
+    var label = (a.textContent || '').replace(/\/$/, '');
+    var isUp = (label === '..' || href === '../');
+    if (isUp && atRoot) { continue; }   // pointless at the top level
+    var row = document.createElement('a');
+    row.href = a.href;
+    if (isUp) {
+      row.className = 'row up';
+      row.textContent = 'Up one level';
+    } else if (href.charAt(href.length - 1) === '/') {
+      row.className = 'row dir';
+      row.textContent = label;
+    } else {
+      row.className = 'row file';
+      row.textContent = label;
+    }
+    rows.appendChild(row);
+  }
+  pre.parentNode.replaceChild(rows, pre);
+  var hrs = document.querySelectorAll('hr');
+  for (var j = 0; j < hrs.length; j++) { hrs[j].style.display = 'none'; }
+}());
+</script>

@@ -1322,6 +1322,31 @@ The kiosk has a **Manuals** button (it replaced the unused Grafana button in `do
 nginx rather than `python -m http.server` because only nginx honours **HTTP Range**, so a
 200 MB PDF pages and scrolls instead of being fetched whole.
 
+### 17.1 Touch-friendly index and the Back button
+
+The raw `autoindex` output is unreadable at arm's length and — because the kiosk runs Chromium
+with `--app` — there is **no browser toolbar, so no Back button**. Both are fixed in
+`pi-dock/pi-config/etc/nginx/sites-available/manuals`:
+
+- `/etc/nginx/manuals-index.css` is appended to every index with `add_after_body`. It carries a
+  `<style>` block and a small `<script>` that rewrites the generated `<pre>` into full-width rows
+  (bold folders with a chevron, no date/size clutter) and retitles `Index of /Engines/` to
+  **Boat Manuals › Engines**.
+- `location ~* \.pdf$` returns a wrapper page: a large **◀ Back** bar plus the PDF in an iframe
+  served from `/raw/`. Without it a touch user cannot escape the PDF viewer.
+
+Two things that will bite anyone editing this:
+
+- A `\.pdf$` location takes its content type from the extension map, so **`default_type` is
+  ignored** and the HTML wrapper goes out as `application/pdf`. Needs `types { text/html pdf; }`
+  inside the location.
+- **`add_after_body` must not be at server level** — it would append the CSS to `/raw/` PDF bytes
+  and corrupt every download. It is scoped to `location /`. Check with a full download: the served
+  byte count must equal the file size.
+
+Also mandatory for reading manuals at the helm: **`/home/pi/manuals` must be readable by nginx**
+(the service runs as `www-data`; `/home/pi` at 755 is fine).
+
 Sync is strictly one-way, `rclone sync dropbox:Boat-Manuals → /home/pi/manuals`, so the boat can
 never overwrite the master copy. It skips quietly when offline (`manuals-sync.timer`, 5 min after
 boot then every **6 hours** — the library essentially never changes, so a frequent sync is pure
