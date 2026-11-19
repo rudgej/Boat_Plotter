@@ -1,0 +1,8 @@
+{
+  "name": "stale-watchdog",
+  "version": "1.0.0",
+  "description": "Raises a Signal K notification when a data feed stops updating, using age-of-last-update rather than whether the value changed",
+  "main": "index.js",
+  "keywords": ["signalk-node-server-plugin"],
+  "license": "MIT"
+}

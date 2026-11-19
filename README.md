@@ -75,6 +75,9 @@ ports**; AvNav reads everything through Signal K rather than opening the ports i
   daemon + Signal K publishing), `report.py` and the verification tools.
 - **`n100/`** — x86 build kit: `bootstrap.sh`, `install-apps.sh`, USB installer scripts,
   `snapshot-n100.sh`, and the bathymetry base-map builder.
+- **`stale-watchdog/`** — Signal K plugin that alerts when a data feed stops updating. Signal K has
+  no native data expiry, so a dead GPS keeps showing its last value forever. Depth is treated as
+  safety-critical (alarm, value blanked); GPS and wind are warnings. See its `README.md`.
 - **`signalk-zones/`** — `set-zones.py` writes the gauge bands; needs a login token, see `ZONES.md`.
 - **`signalk-plugins/`** — the `enginetrends-status` plugin plus wind/GPS diagnostic scripts.
 - **`seakeeper-esp/`** — ESP32 firmware for the Seakeeper interface.
