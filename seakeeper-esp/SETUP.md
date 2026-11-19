@@ -164,6 +164,19 @@ Either way the Pi reaches it at **`http://192.168.10.50/`** (the Pi's
 Still to verify on the boat: the Seakeeper's real IP (static `172.16.102.1` vs
 DHCP).
 
+## 7. Direct connection — no bridge (added 2026-11-19)
+
+The bridge is no longer the only option. The box's second Ethernet port `enp2s0` now carries
+**172.16.102.254/24**, the same subnet this bridge used on its downlink, so the Seakeeper can be
+cabled **straight into the box** and sees exactly the network it was pre-configured for.
+
+- Direct: cable → `enp2s0`, browse **`http://172.16.102.1/`** from the box.
+- Via the bridge: unchanged, browse **`http://192.168.10.50/`**.
+
+The two are interchangeable, which is the point: the assumed `.1` works either way. Full details,
+including the DHCP fallback if the Seakeeper turns out to be a DHCP client, are in
+`MIGRATION.md` §18. `enp2s0` is `ipv4.never-default`, so it can never steal the internet route.
+
 ## Recovery
 
 - **Misconfigured?** `factory_reset` on the serial console, or

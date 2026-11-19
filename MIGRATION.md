@@ -87,14 +87,17 @@ and label the ports once it's built; a dongle in the wrong socket on a dark boat
 
 ## 1. OS install
 
-> ⚠️ **Open issue, confirmed on the unit (2026-11-18): `State After G3` / *Restore AC Power Loss* was
-> NOT found.** Searched Advanced (no Power Management or PCH-IO entry) and Chipset → PCH-IO
-> Configuration (PCIe/SATA/USB/SerialIo/PMC/DeepSx — `DeepSx Power Policies` is already *Disabled*,
-> which is the ErP-adjacent setting). Deferred: get the system working first. Options to revisit, in
-> order: `Chipset → PCH-IO → PMC Configuration` and `Advanced → PCH-FW Configuration`; then
-> `Advanced → S5 RTC Wake Settings` as a timed-wake workaround; failing all that, a hardware answer at
-> the boat end (latching relay or UPS power-good signal). **Until resolved, a DC power cut leaves the
-> plotter off until someone presses the button.**
+> ✅ **CLOSED 2026-11-19 — it auto-starts anyway.** Although `State After G3` / *Restore AC
+> Power Loss* was never found in this board's BIOS (searched Advanced, Chipset → PCH-IO
+> Configuration, PMC Configuration, PCH-FW), the unit **powers on by itself when DC is applied**.
+> Observed behaviour beats the setting that could not be found: no BIOS change is required and
+> this is not an open item. The notes below are kept only so nobody repeats the search.
+>
+> Original note (confirmed on the unit 2026-11-18): `State After G3` was NOT found. `DeepSx Power
+> Policies` is already *Disabled*, which is the ErP-adjacent setting. Fallbacks if the box ever
+> does stop auto-starting: `Chipset → PCH-IO → PMC Configuration`, `Advanced → PCH-FW
+> Configuration`, then `Advanced → S5 RTC Wake Settings` as a timed-wake workaround, then a
+> hardware answer at the boat end (latching relay or UPS power-good signal).
 
 > **Observed on the actual unit (CWWK N100, AMI Aptio).** `Advanced` holds: CPU Configuration,
 > Power & Performance, PCH-FW Configuration, Trusted Computing, **IT8625 Super IO Configuration**,
@@ -610,6 +613,22 @@ level ports today and there is nothing in software to switch. So when the ports 
 the transceiver has to handle direction itself — i.e. an auto-direction (auto-flow) 485 module on
 the DB9, or a manual RTS-driven transceiver with the driver toggling RTS. Do not expect
 `ioctl(TIOCSRS485)` to drive DE/RE on this board.
+
+**These ports will be operated as RS485 later** (the udev names `rs485-1`/`rs485-2` already assume
+it). Nothing in Signal K's configuration changes when that happens — the rates and the
+`device`/`baudrate` options stay exactly as below, because the UART settings are the same over
+232 or 485. Only the transceiver in the wiring changes.
+
+### 6.2 What each port carries, and why the rates are what they are
+
+| Port | Rate | Carries | Note |
+|---|---|---|---|
+| `rs485-1` | **4800 8N1** | general instrument data — depth, speed, heading | Classic NMEA 0183. **Much of this duplicates NMEA 2000** on `can0`. Signal K simply holds both sources; if a duplicated value ever fights the N2K one, disable this provider rather than tolerating a flapping value |
+| `rs485-2` | **38400 8N1** | AIS | AIS is the NMEA 0183 **HS** rate, which is 38400 — not 38000. That is what is configured, and it is the only correct value for AIS |
+
+Duplication is not harmful in itself: Signal K keys data by source, so the N2K sentence and the
+0183 sentence coexist. The only risk is two *conflicting* values for the same path, which shows up
+as a value flickering between two numbers.
 
 | Port | Device | Rate | Feeds |
 |---|---|---|---|
@@ -1435,3 +1454,115 @@ Three traps worth keeping:
   overrides), so it cannot regress.
 
 
+---
+
+## 18. Seakeeper — direct Ethernet on `enp2s0`
+
+`enp2s0` was reserved for the Seakeeper but had no address configuration, so a cable in that
+socket did nothing. It now has a static connection:
+
+| | |
+|---|---|
+| Interface | `enp2s0` (the second 2.5 GbE port) |
+| Address | **172.16.102.254/24** |
+| Gateway | none — `ipv4.never-default yes`, so it can never steal the internet route |
+| DHCP | none on this interface (static only) |
+| NM connection | `seakeeper`, `autoconnect yes`, priority 50 |
+
+Captured in the repo at
+`pi-dock/pi-config/etc/NetworkManager/system-connections/seakeeper.nmconnection`, so §4 restores it.
+
+### 18.1 Why 172.16.102.x
+
+The assumed Seakeeper address is **`172.16.102.1`** — the same assumption the ESP32 bridge in
+`seakeeper-esp/SETUP.md` §5 was built around (`172.16.102.254/24` downlink, `172.16.102.1` =
+Seakeeper). Using the identical subnet on `enp2s0` means **the ESP32 bridge and a direct cable are
+interchangeable**: the Seakeeper sees the same network either way, and nothing has to be
+reconfigured between the two test setups.
+
+### 18.2 Two ways to connect it
+
+| Setup | Path to the Seakeeper web UI |
+|---|---|
+| **Direct cable** (first test) | cable into `enp2s0`; browse `http://172.16.102.1/` |
+| Via the ESP32 bridge | Seakeeper → ESP32 RJ45 → Wi-Fi → BoatNetwork; browse `http://192.168.10.50/` |
+
+`launch-seakeeper.sh` (the dock button) points at the bridge, `http://192.168.10.50/`. For a direct
+cable, browse `http://172.16.102.1/`; change the launcher to that URL if the direct link becomes
+the permanent arrangement.
+
+### 18.3 If the Seakeeper turns out to be a DHCP client
+
+The static address only works if the Seakeeper holds `172.16.102.1` itself. If it is a DHCP client
+it will get nothing from this interface and the link will look dead. Fallback — a DHCP server
+scoped to **this interface only**. Never a general one: a stray `dnsmasq` that binds `0.0.0.0:53`
+breaks the BoatNetwork AP (see §8).
+
+```
+# /etc/dnsmasq.d/seakeeper.conf
+interface=enp2s0
+bind-dynamic
+port=0                          # DHCP only, no DNS
+dhcp-range=172.16.102.100,172.16.102.200,12h
+dhcp-option=3                    # no gateway: keep it isolated
+```
+
+Then run it as its own unit with `--conf-file=/etc/dnsmasq.d/seakeeper.conf`, find the lease, and
+point the launcher at whatever address it got.
+
+**Decide which by testing:** plug the Seakeeper into `enp2s0`, then from the box
+`ping -c3 172.16.102.1`. A reply means it is static and nothing more is needed.
+---
+
+## 19. Charts — o-charts (oeSENC) via the AvNav `ochartsng` plugin
+
+The chart source is **o-charts**, not the Natural Earth base map. The `ochartsng` plugin is
+installed and running; what is missing is the **account login**, which only the owner can type.
+
+### 19.1 Verified state on the box (2026-11-19)
+
+| Check | Result |
+|---|---|
+| Plugin | loads as `system-ochartsng`; log: `STARTED, provider started ... connecting at http://localhost:8083/list` |
+| `oexserverd` | present and running (`oexserverd 1090 successfully started and connected`) |
+| Libraries | `libsgllnx64-2.29.02.so`, `libpreload.so` both present in the plugin dir |
+| Chart dir | `/var/lib/avnav/ochartsng/charts` — **empty** (`ReadChartsInitial returned 0`) |
+| Credentials | `settings.json` holds only display config (`detail`, `important`) — **no login stored** |
+
+So the plugin is healthy and simply has nothing to serve.
+
+### 19.2 The one manual step — log in
+
+Open the plugin UI (it is also reachable from AvNav's settings):
+
+```
+http://bossy.local:8080/plugins/system-ochartsng/gui/index.html
+```
+
+Sign in with the **o-charts account** (the one that owns the chart purchases), then use
+**update chart list / download**. Purchased charts land in `/var/lib/avnav/ochartsng/charts` and are
+picked up automatically — the plugin registers itself as an external chart provider, so no entry is
+needed in `avnav_server.xml`.
+
+This cannot be scripted: it needs the account password, and the download is authorised against
+o-charts' servers.
+
+### 19.3 Licences are bound to a fingerprint
+
+o-charts sells licences against a **hardware fingerprint**, and AvNav is the well-behaved case here:
+its `oexserverd` runs with `LD_PRELOAD=/usr/lib/avnav/plugins/ochartsng/libpreload.so`, which
+snapshots and replays the fingerprint, so it survives restarts and reboots. (OpenCPN has no such
+protection and must be re-identified whenever the fingerprint drifts.)
+
+If after logging in the charts show as belonging to another system, the fingerprint differs from
+the one the purchases were registered against. Deal with that then — do not force a
+re-identification before checking the o-charts account page, because each new identity is a
+separate registration.
+
+### 19.4 The MBTiles base map is a separate thing
+
+`/var/lib/avnav/charts/med-base.mbtiles` (12.6 MB, Natural Earth) is a rough world base map, not
+navigation data. Note that `http://localhost:8080/charts/med-base.mbtiles` currently returns 404
+even though AvNav is started with `-c /var/lib/avnav/charts`, so treat that map as unverified.
+It is irrelevant to o-charts, which serves its own provider, but if the base map is ever wanted for
+passage planning it needs its own debug pass.
