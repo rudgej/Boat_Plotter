@@ -1322,21 +1322,31 @@ The kiosk has a **Manuals** button (it replaced the unused Grafana button in `do
 nginx rather than `python -m http.server` because only nginx honours **HTTP Range**, so a
 200 MB PDF pages and scrolls instead of being fetched whole.
 
-Sync is strictly one-way, `rclone sync dropbox:BoatManuals → /home/pi/manuals`, so the boat can
+Sync is strictly one-way, `rclone sync dropbox:Boat-Manuals → /home/pi/manuals`, so the boat can
 never overwrite the master copy. It skips quietly when offline (`manuals-sync.timer`, 5 min after
-boot then every 30 min).
+boot then every **6 hours** — the library essentially never changes, so a frequent sync is pure
+overhead).
 
-Done 2026-11-19: nginx site enabled, `/home/pi/manuals` created, dock rebuilt with the button.
-**Still needed — cannot be scripted, needs your Dropbox login:**
+Done 2026-11-19 and **live**: rclone authorised, config on the boat, 56 files / 152 MiB synced,
+nginx serving with `Range` (`206 Partial Content`), dock rebuilt with the button.
 
 ```
-sudo apt install rclone          # already present (v1.60.1), this is just the doc
-rclone config                    # n → name: dropbox → storage: dropbox → authorise in a browser
-rclone lsd dropbox:BoatManuals   # must list
-sudo systemctl start manuals-sync.service && sudo tail -20 /var/log/manuals-sync.log
+sudo apt install rclone          # already present (v1.60.1)
+rclone lsd dropbox:Boat-Manuals  # must list the categories
+bash pi-dock/dropbox/configure-remote.sh   # sets MANUALS_REMOTE, runs first sync
+tail -20 /home/pi/manuals-sync.log
 ```
 
-The OAuth token lands in `/home/pi/.config/rclone/rclone.conf` — **never commit it**. See
-`pi-dock/dropbox/README.md` for the naming convention and the rest.
+Three traps worth keeping:
+
+- **The OAuth token lands in `/home/pi/.config/rclone/rclone.conf` — never commit it.** Copy it to
+  a replacement box rather than re-authorising.
+- **Homebrew on an Intel Mac is now Tier 3** and will not install rclone without building Golang
+  from source. Take the official binary from `downloads.rclone.org` instead, authorise there, and
+  copy the config to the boat. The token is portable.
+- **The sync unit runs as `User=pi`.** An earlier version logged to `/var/log/manuals-sync.log`,
+  which pi cannot create on a fresh box — every timer tick failed with "Permission denied" while
+  systemd still reported it as finished. It now logs to `$HOME/manuals-sync.log` (`MANUALS_LOG`
+  overrides), so it cannot regress.
 
 

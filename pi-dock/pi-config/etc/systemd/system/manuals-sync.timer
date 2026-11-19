@@ -1,10 +1,13 @@
 [Unit]
-Description=Sync boat manuals from Dropbox every 30 minutes
+Description=Sync boat manuals from Dropbox every 6 hours
 
 [Timer]
+# The manuals library essentially never changes, so a frequent sync is pure
+# overhead. One run shortly after boot (so a boat that was switched off picks
+# up any additions) and then every 6 hours while powered.
 OnBootSec=5min
-OnUnitActiveSec=30min
-AccuracySec=1min
+OnUnitActiveSec=6h
+AccuracySec=5min
 Persistent=true
 
 [Install]
