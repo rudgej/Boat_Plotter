@@ -954,6 +954,41 @@ sudo tailscale up --ssh --advertise-routes=192.168.10.0/24
 
 Log in at **login.tailscale.com**, then `tailscale ip -4` prints a stable `100.x.y.z` address.
 
+### 11.1 What was actually deployed (2026-11-19) — done
+
+Tailscale 1.104.7 from the Debian package, logged in and live. The command above is the *full*
+build; the box currently runs the simpler form:
+
+| | |
+|---|---|
+| Login | `tailscale up` — **no `--ssh`, no `--advertise-routes`** |
+| `bossy` | `100.102.160.120`, `bossy.taile75f3e.ts.net` |
+| `imac` | `100.124.85.89` |
+| MagicDNS | on — `http://bossy:3000` works from any network |
+| Subnet routes | none advertised, so BoatNetwork clients are **not** reachable over the tailnet |
+
+Verified working from the Mac over the tunnel: Signal K, KIP, AvNav, Manuals (all 200) and
+`ssh pi@bossy`. Ping succeeds in **both** directions, so the mesh is genuinely bidirectional.
+
+**`--advertise-routes=192.168.10.0/24` is still worth adding** if you want to reach the Shelly and
+other BoatNetwork devices remotely. Advertise it, then approve the route in *Machines → bossy → Edit
+route settings*.
+
+### macOS client gotcha
+
+Install from the vendor `.pkg`, not `brew install --cask` — on this Mac the cask left the package
+downloaded but never installed, and Homebrew is now Tier 3 on Intel anyway. The GUI's "Sign in"
+button can silently do nothing (it hands off to the browser through a system extension); the
+reliable path is the CLI from the real bundle:
+
+```bash
+/Applications/Tailscale.app/Contents/MacOS/Tailscale login
+```
+
+**Do not symlink it into `/usr/local/bin`** — it dies with
+`Fatal error: The current bundleIdentifier is unknown to the registry`. Use a shell alias in
+`~/.zshrc` that keeps the bundle path.
+
 | From any device on your tailnet | |
 |---|---|
 | Signal K | `http://100.x.y.z:3000` |
