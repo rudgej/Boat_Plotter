@@ -415,6 +415,18 @@ sudo systemctl enable can0-nmea2000.service can-watchdog.timer \
 > `plugin-config-data`. **Start Signal K after this, not before** — the plugin and provider
 > list are only read at startup.
 >
+> **Network profiles now come with it too** (`BoatNetwork`, `Bossywifi`, `3cpr`, `seakeeper`).
+> Two things must be done by hand or the network silently doesn't come up:
+> ```
+> sudo chown root:root /etc/NetworkManager/system-connections/*.nmconnection
+> sudo chmod 600       /etc/NetworkManager/system-connections/*.nmconnection
+> sudo nmcli con mod BoatNetwork wifi-sec.psk '<password>'   # and Bossywifi, 3cpr
+> sudo systemctl reload NetworkManager
+> ```
+> NetworkManager **ignores a keyfile that is not 0600 root** — `cp` leaves it 644 and the
+> connection never appears. Passwords are stripped from the repo. See
+> `pi-dock/pi-config/etc/NetworkManager/system-connections/README.md`.
+>
 > `engine-trends` needs `pi` in the `dialout` group for the serial ports (§6.4); that is a
 > group membership, not a file, so it is not restored by a `cp`.
 

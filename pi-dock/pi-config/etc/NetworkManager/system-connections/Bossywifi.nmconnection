@@ -1,0 +1,25 @@
+[connection]
+id=Bossywifi
+uuid=0ecd26cb-a814-4214-bfd5-5d41fcf5f8fc
+type=wifi
+# Priority 10 beats 3cpr (5): on the boat this is the uplink that wins when it
+# is in range. Falls back to 3cpr (home) automatically when it is not.
+autoconnect-priority=10
+interface-name=wlp3s0
+
+[wifi]
+mode=infrastructure
+ssid=Bossywifi
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk=CHANGE_ME
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=ignore
+
+[proxy]

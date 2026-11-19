@@ -1,0 +1,24 @@
+[connection]
+id=3cpr
+uuid=53d8f262-7660-48f3-89b1-47693640f984
+type=wifi
+# Priority 5: home network. Used when Bossywifi is not in range.
+autoconnect-priority=5
+interface-name=wlp3s0
+
+[wifi]
+mode=infrastructure
+ssid=3cpr
+
+[wifi-security]
+key-mgmt=wpa-psk
+psk=CHANGE_ME
+
+[ipv4]
+method=auto
+
+[ipv6]
+addr-gen-mode=default
+method=ignore
+
+[proxy]

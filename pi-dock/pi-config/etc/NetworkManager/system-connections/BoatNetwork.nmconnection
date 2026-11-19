@@ -1,0 +1,34 @@
+[connection]
+id=BoatNetwork
+uuid=ef9c1fe2-ff04-4dda-8878-7f27d367c32d
+type=wifi
+interface-name=wlx6815790f593c
+
+[wifi]
+band=bg
+channel=6
+mode=ap
+powersave=2
+ssid=BoatNetwork
+
+[wifi-security]
+group=ccmp;
+key-mgmt=wpa-psk
+pairwise=ccmp;
+proto=rsn;
+psk=CHANGE_ME
+
+[ipv4]
+# The gateway address is set explicitly ON PURPOSE. With method=shared but no
+# address, NetworkManager invents a default (10.42.x.x) and every device that
+# has 192.168.10.1 compiled in (wind/tank sensors, the Seakeeper bridge stops
+# talking. Do not remove this line.
+address1=192.168.10.1/24
+method=shared
+shared-dhcp-range=192.168.10.100,192.168.10.200
+
+[ipv6]
+addr-gen-mode=default
+method=ignore
+
+[proxy]
