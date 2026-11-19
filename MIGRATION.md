@@ -585,6 +585,23 @@ transmit into instrument wiring. The consequence is simply that Signal K must be
 **input-only** on both, and these ports can never feed an autopilot or any other NMEA 0183 sink.
 All transmission in this build goes out over NMEA 2000 (§5), not 0183.
 
+### 6.1 Measured on the box, 2026-11-19 (`ttyS2`/`ttyS3` are phantoms)
+
+Probed rather than assumed:
+
+| Check | Result |
+|---|---|
+| `dmesg` | `Serial: 8250/16550 driver, 4 ports` — only `00:01: ttyS0 at I/O 0x3f8 (irq 4)` and `00:02: ttyS1 at I/O 0x2f8 (irq 3)` are enumerated, both `16550A` |
+| `/dev/ttyS2`, `/dev/ttyS3` | device nodes exist but there is no controller behind them — `stty` returns `Input/output error`. **Ignore them**; they are not spare ports |
+| `stty -F /dev/ttyS0 9600` | succeeds (and on `ttyS1`) — the UARTs are live |
+| `bash` jobs `open()` + `ioctl(TIOCSRS485)` | **`ENOTTY` (25) on both ports, even as root** |
+
+That last one matters: **the kernel has no RS485 mode for these UARTs.** They are plain RS232
+level ports today and there is nothing in software to switch. So when the ports are moved to 485,
+the transceiver has to handle direction itself — i.e. an auto-direction (auto-flow) 485 module on
+the DB9, or a manual RTS-driven transceiver with the driver toggling RTS. Do not expect
+`ioctl(TIOCSRS485)` to drive DE/RE on this board.
+
 | Port | Device | Rate | Feeds |
 |---|---|---|---|
 | COM 1 | `/dev/rs485-1` | **4800 8N1** | general instrument data (classic NMEA 0183) |
@@ -632,8 +649,7 @@ repo to call the real binaries directly. Verify with:
 | Seakeeper | `launch-seakeeper.sh` | `seakeeper-esp/` firmware on the ESP32 (repo) + its web UI |
 | Spotify | `launch-spotify.sh` | Chromium → Spotify web (no server install) |
 | Signal K | `launch-signalk.sh` | Signal K `:3000` |
-| Grafana | `launch-grafana.sh` | `[TODO-CONFIRM]` Grafana server if it was running on the old Pi |
-| Manuals (optional) | `launch-manuals.sh` | nginx on `:8081` + Dropbox sync — `pi-dock/dropbox/README.md`. Add to `dock.c` (1 line) to show the button |
+| Manuals | `launch-manuals.sh` | nginx on `:8081` + Dropbox sync (§17). **Replaced the Grafana button 2026-11-19** — Grafana was never in use |
 | Bluetooth | `bt-pair.sh` / `bt-hifi.service` | bluez + pipewire (§1.4) |
 | Power | `poweroff.sh` | nothing — just `poweroff` |
 
@@ -1225,3 +1241,102 @@ followed by a wall of text before the kiosk appears. Three things are needed tog
 
 Verify after a reboot: splash, then the app, with no text between. `Ctrl+Alt+F3` should
 show the boot log.
+
+---
+
+## 16. Engine trend monitoring (`engine-trends`)
+
+Implements `engine-trends/SPEC.md`: a **change detector**, not an alarm. Learns per-engine,
+per-RPM-band baselines and reports `NORMAL` or `REVIEW — <what changed>`.
+
+**Deliberate deviation from the SPEC's dependency list:** the daemon uses **no numpy and no
+scipy**. Percentiles, MAD, OLS, Theil-Sen and Mann-Kendall are implemented in the standard
+library, so the only dependency is `websocket-client`, which is already on the box. A boat
+should not need a package install to keep monitoring; the maths is identical.
+
+| File (repo) | Goes to |
+|---|---|
+| `engine-trends/engine-trends.py` | `/usr/local/bin/engine-trends.py` (755) |
+| `engine-trends/engine-trends.service` | `/etc/systemd/system/` |
+| `engine-trends/enginetrends-status/` | `~/.signalk/node_modules/enginetrends-status/` |
+| — | `~/.signalk/plugin-config-data/enginetrends-status.json` = `{"enabled":true,...}` |
+| — | `/home/pi/.engine-trends/engine-trends.db` (created on first run) |
+
+Install with `engine-trends/install-on-box.sh` (copies all of the above), then:
+
+```
+sudo systemctl daemon-reload
+sudo systemctl enable --now engine-trends
+sudo journalctl -u engine-trends -f
+```
+
+### 16.1 The plugin is not optional
+
+Signal K 2.x **refuses a PUT to any path no provider has registered** (405) — the same trap as
+`holdingtank-status`. `enginetrends-status` registers `engineHealth.*` at startup with
+`supportsPut:true`. After adding it, Signal K must be **restarted** (`sudo systemctl restart
+signalk`); a plugin in `node_modules` with `enabled:true` is only picked up on start.
+`engine-trends/verify-paths.sh` proves it: an authenticated PUT must return **200**, not 405.
+
+### 16.2 What KIP binds to
+
+```
+engineHealth.<engine>.band                  "Band 2 (1400-1800)" | "Idle / manoeuvring"
+engineHealth.<engine>.status                NORMAL | REVIEW
+engineHealth.<engine>.message               latest REVIEW text ("" when NORMAL)
+engineHealth.<engine>.<param>.current       display units (number)
+engineHealth.<engine>.<param>.baseline      operational baseline for the CURRENT band (number)
+engineHealth.<engine>.<param>.baselineStatus ESTABLISHED | ESTABLISHING | NOT_ESTABLISHED | N/A
+engineHealth.<engine>.<param>.readout       "Oil pressure: 4.50 bar (baseline 4.60 bar)"
+engineHealth.<engine>.<param>.currentText / .baselineText   the two halves as strings
+```
+
+`<engine>` is `port` or `starboard`; `<param>` is `rpm`, `coolant`, `oilTemp`, `oilPressure`,
+`boost`, `fuel`. The `readout` string is what a KIP *text* widget wants — one binding per
+parameter, no formatting in KIP.
+
+### 16.3 Traps found while building it
+
+- **Individual samples must not be retained** (SPEC 7) but an in-progress session must **survive a
+  reboot**, and baseline validation needs the full sample distribution. Resolution: in-progress
+  samples live in `session_samples`, are deleted the moment the trip is finalised, and the run's
+  samples are also held in memory for baseline validation. Cleaning them on write broke baseline
+  establishment — the run must keep its own list.
+- **An established baseline is permanent.** Later qualifying periods must not feed
+  `baseline_samples` again, or a drifted run silently overwrites the reference. `_close_run`
+  returns early once the state is `ESTABLISHED`.
+- **A long steady run that includes a slow drift fails validation** on purpose ("no significant
+  intra-session temperature trend"). The period closes and re-validates on the next throttle
+  change; that is the SPEC behaving correctly, not a bug.
+- `--selftest` runs a synthetic warm-up → stabilise → 80 min Band 2 → temperature rise, using a
+  temporary database, and asserts a baseline was established and one REVIEW was raised. Use it
+  after any edit; it needs no Signal K and no engine.
+- `--status` prints baselines/sessions/reviews from the live database.
+
+---
+
+## 17. Manuals — offline library synced from Dropbox
+
+The kiosk has a **Manuals** button (it replaced the unused Grafana button in `dock.c`,
+2026-11-19). It opens `http://localhost:8081`, an nginx `autoindex` of `/home/pi/manuals`.
+nginx rather than `python -m http.server` because only nginx honours **HTTP Range**, so a
+200 MB PDF pages and scrolls instead of being fetched whole.
+
+Sync is strictly one-way, `rclone sync dropbox:BoatManuals → /home/pi/manuals`, so the boat can
+never overwrite the master copy. It skips quietly when offline (`manuals-sync.timer`, 5 min after
+boot then every 30 min).
+
+Done 2026-11-19: nginx site enabled, `/home/pi/manuals` created, dock rebuilt with the button.
+**Still needed — cannot be scripted, needs your Dropbox login:**
+
+```
+sudo apt install rclone          # already present (v1.60.1), this is just the doc
+rclone config                    # n → name: dropbox → storage: dropbox → authorise in a browser
+rclone lsd dropbox:BoatManuals   # must list
+sudo systemctl start manuals-sync.service && sudo tail -20 /var/log/manuals-sync.log
+```
+
+The OAuth token lands in `/home/pi/.config/rclone/rclone.conf` — **never commit it**. See
+`pi-dock/dropbox/README.md` for the naming convention and the rest.
+
+

@@ -1,0 +1,20 @@
+[Unit]
+# Engine trend monitoring (engine-trends/SPEC.md).
+# Needs Signal K up first: it subscribes to the self stream and PUTs back the
+# engineHealth.* readout. Same conventions as holding-tank-dump.service.
+Description=Engine trend monitoring
+After=signalk.service
+Wants=signalk.service
+
+[Service]
+Type=simple
+User=pi
+EnvironmentFile=/etc/signalk-automation.env
+ExecStart=/usr/bin/python3 /usr/local/bin/engine-trends.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

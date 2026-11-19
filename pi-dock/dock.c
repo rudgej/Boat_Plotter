@@ -75,7 +75,7 @@ int main (int argc, char **argv)
         {"Seakeeper", "/usr/local/bin/launch-seakeeper.sh"},
         {"Spotify",   "/usr/local/bin/launch-spotify.sh"},
         {"Signal K",  "/usr/local/bin/launch-signalk.sh"},
-        {"Grafana",   "/usr/local/bin/launch-grafana.sh"},
+        {"Manuals",   "/usr/local/bin/launch-manuals.sh"},
         {"Keys",      "/usr/local/bin/kb-toggle.sh"},
         {"Bluetooth", "/usr/local/bin/bt-pair.sh"},
     };
