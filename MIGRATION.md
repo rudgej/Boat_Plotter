@@ -1562,19 +1562,29 @@ So the plugin is healthy and simply has nothing to serve.
 
 ### 19.2 The one manual step — log in
 
-Open the plugin UI (it is also reachable from AvNav's settings):
+Open the plugin UI **on the provider's own port**:
 
 ```
-http://bossy.local:8080/plugins/system-ochartsng/gui/index.html
+http://bossy.local:8083/static/index.html
 ```
 
-Sign in with the **o-charts account** (the one that owns the chart purchases), then use
-**update chart list / download**. Purchased charts land in `/var/lib/avnav/ochartsng/charts` and are
-picked up automatically — the plugin registers itself as an external chart provider, so no entry is
-needed in `avnav_server.xml`.
+Menu: **Status · Charts · Shop · Main Settings · Detail Settings**. Sign in on **Shop → Login** with
+the o-charts account that owns the purchases, then **Refresh** and download. Charts land in
+`/var/lib/avnav/ochartsng/charts` and are picked up automatically — the plugin registers itself as
+an external chart provider, so no entry is needed in `avnav_server.xml`.
 
 This cannot be scripted: it needs the account password, and the download is authorised against
 o-charts' servers.
+
+> ⚠️ **Do not open it at `:8080/plugins/system-ochartsng/gui/index.html`.** That path does serve a
+> copy of the UI, but the app calls its API with **root-relative** paths (`/status/`, `/shop/`,
+> `/charts/`). On `:8080` those resolve against AvNav, which 404s them, and the page sits on
+> **"loading" forever** looking like an outage. The provider serves the real UI *and* the API on
+> the same origin at `:8083`, which is why it works there. Confirmed by inspection: `:8080` 404 for
+> every endpoint, `:8083/status/` → 200 JSON and `:8083/shop/` → 200 XML.
+>
+> **"Dongle: no dongle" is normal** — that applies to physical-dongle licences. These are software
+> licences tied to the fingerprint, so the field stays empty.
 
 ### 19.3 Licences are bound to a fingerprint
 
