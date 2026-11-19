@@ -46,6 +46,7 @@ kiosk_launch() {
         --start-maximized \
         --touch-events=enabled \
         --enable-virtual-keyboard \
+        --autoplay-policy=no-user-gesture-required \
         --no-first-run \
         --no-default-browser-check \
         --user-data-dir="$profile" \
