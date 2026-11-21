@@ -346,13 +346,17 @@ disproved by measurement, not by another guess.
    a native client is available — no headless Chromium required.
 4. **Do the other integration modes move the address?** Raymarine was tested
    and did not. Glass Helm and Simrad were not tested.
-5. **A second MQTT client appears to displace the UI's connection.** After a
-   Python client connected, the open browser page stopped reflecting changes it
-   should have received (its DOM stayed on the hardcoded defaults while the
-   unit reported the new value). Not yet isolated: single-connection broker, or
-   a client-ID/keepalive interaction. **Relevant before running a Signal K
-   bridge on the box** — verify whether the operator's browser UI and the
-   bridge can be connected simultaneously.
+5. ~~**A second MQTT client displaces the UI's connection?**~~ **CLOSED
+   2026-11-21 — no, it does not.** Two independent clients connected
+   simultaneously both received `seakeeper/status/1`: 44 and 40 messages in 10
+   seconds. The broker is multi-client, so a Signal K bridge on the box and an
+   operator's browser UI can run at the same time. The earlier suspicion came
+   from a page that had been navigated away and back; its own state was stale,
+   not evicted.
+
+   Also measured: status is published at roughly **4–5 messages/second**, which
+   is the rate a bridge should expect (and may want to decimate before feeding
+   Signal K).
 6. ~~**What does `flywheel_speed` do during a real coast-down?**~~ **CLOSED
    2026-11-21.** It reports the decay. The owner confirms the UI shows the
    speed winding down from operating rpm over hours. Not captured in this
