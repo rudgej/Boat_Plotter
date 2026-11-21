@@ -279,11 +279,23 @@ disproved by measurement, not by another guess.
    later, with no DHCP server present. That pattern suggests a DHCP client
    falling back, but it has not been proven. The MAC-pinned lease in §6.2 makes
    the question moot for the install.
-3. **Headless MQTT client.** A hand-rolled Python WebSocket client completed the
-   HTTP upgrade on `:9001` but the unit closed the connection before accepting
-   the MQTT CONNECT. The status data in §5.3 was read through the page's own
-   Paho connection instead. A headless subscriber needs to match Paho's exact
-   subprotocol and framing — untried so far.
+3. **Headless MQTT client.** A hand-rolled Python WebSocket client completes the
+   HTTP upgrade on `:9001` (`101 Switching Protocols`) but the unit closes the
+   connection before returning a CONNACK. The status data in §5.3 was read
+   through the page's own Paho connection instead.
+
+   Ruled out on 2026-11-21:
+
+   | Hypothesis | Test | Result |
+   |---|---|---|
+   | Missing `Origin` header | added `Origin: http://192.168.0.2` | still closed |
+   | Broker allows one client only | dropped the browser's connection first | still closed |
+   | Subprotocol mismatch | tried `mqtt`, then `mqttv3.1` | still closed |
+
+   **Next move:** capture the browser's *own* handshake rather than guessing —
+   start `sudo tcpdump -ni en2 -s 0 -A 'tcp port 9001' > /tmp/ws.txt`, then load
+   `http://192.168.0.2/`, then replay Paho's exact request bytes and frame
+   sequence. Do this before writing any Signal K code around MQTT.
 4. **Do the other integration modes move the address?** Raymarine was tested
    and did not. Glass Helm and Simrad were not tested.
 
