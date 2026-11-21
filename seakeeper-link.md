@@ -181,7 +181,7 @@ Fields that matter for a plotter integration:
 
 | Field | Meaning |
 |---|---|
-| `flywheel_speed` | **actual rpm** — this is the number shown as MOTOR SPEED |
+| `flywheel_speed` | **actual rpm**, live — confirmed ramping 0→41 over ~9 s from a power-on. **Reads 0 the instant power is commanded off**; it does not show spool-down, so it cannot be used to tell whether the rotor is still spinning |
 | `flywheel_speed_percent` | 0–100, drives the speed ring |
 | `flywheel_min_speed` / `flywheel_max_speed` | 7600 / 9700 on this unit |
 | `flywheel_crt_selected_speed` | current selector, 0 = max, 1 = min |
@@ -272,6 +272,16 @@ dns-sd -G v4 canvu.local    → 192.168.0.2
 
 # commands (captured while clicking in the UI)
 {"power":1} {"power":0} {"flywheel_speed":1} {"flywheel_speed":0}
+
+# power cycle, 2026-11-21 — proves flywheel_speed is a live rpm counter
+t(s)  rpm  power
+ 0.3    0      1     <- {"power":1} accepted, power_enabled flips immediately
+ 2.3    3      1
+ 4.3   10      1
+ 6.3   22      1
+ 8.3   35      1
+ 9.2   41      1     <- ~4.5 rpm/s early in the ramp
+10.3    0      0     <- {"power":0}: rpm drops to 0 at once, no spool-down shown
 ```
 
 ---
