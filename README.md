@@ -29,6 +29,54 @@ automation units use.
 dashboards. Logged out, KIP keeps them in the browser's localStorage and they never reach the box.
 Logged in, they are written to `~/.signalk/applicationData/users/boat/kip/` and survive a re-image.
 
+## Accounts and SSH
+
+Two human accounts exist, both with `NOPASSWD` sudo. No passwords are recorded in this repo.
+
+| Account | uid | Notes |
+|---|---|---|
+| `pi` | 1001 | Created post-install; the account the laptops use |
+| `boat` | 1000 | The original install account, and the name used for Signal K / KIP logins |
+
+| Machine | Key | Authorised on |
+|---|---|---|
+| iMac | `~/.ssh/id_ed25519` (`jeremy@imac`) | `pi` |
+| MacBook | `~/.ssh/id_boat` — **no passphrase** | `pi` and `boat` |
+
+**Connect from the MacBook with `IdentitiesOnly=yes`:**
+
+```sh
+ssh -i ~/.ssh/id_boat -o IdentitiesOnly=yes pi@192.168.10.1
+```
+
+Without `IdentitiesOnly=yes` ssh offers the MacBook's default `id_ed25519` first, which *has* a
+passphrase, and the session ends at a password prompt even though the correct key is authorised.
+That cost an hour on 2026-11-21 — it is the whole reason this section exists.
+
+### Which address
+
+| Route | Address | Depends on |
+|---|---|---|
+| **The box's own BoatNetwork AP** | `192.168.10.1` | nothing — always present |
+| Home Wi-Fi (`3cpr`) | `192.168.1.183` | being at home |
+| mDNS | `bossy.local` | same subnet as the box |
+| Tailscale | `100.102.160.120` | the box having internet |
+
+`192.168.10.1` is an address the box **provides**, not one it receives, so it does not change when
+the boat's router changes. It is the one to rely on at sea.
+
+### Putting the box on the boat's Starlink network
+
+First time only, and it needs a few minutes with no internet:
+
+1. Join the **BoatNetwork** Wi-Fi and ssh to `192.168.10.1`.
+2. On the box: `sudo nmcli device wifi connect "<starlink-ssid>" password "<password>"`
+3. Switch the laptop back to the Starlink Wi-Fi.
+
+After that the box joins Starlink on its own at boot, the laptop keeps its internet, and the AP stays
+as a fallback. To avoid losing connectivity during step 2, tether the laptop over USB instead — the
+AP has no gateway, so the phone becomes the default route while Wi-Fi still reaches the box.
+
 ## Hardware
 
 CWWK Fanless Industrial Mini PC — Intel N100, 8 GB RAM, 128 GB M.2 NVMe, 2× RS232/RS485 COM, dual
@@ -61,10 +109,33 @@ HAT.
 | `manuals-sync.timer` | — | Pulls Boat Manuals from Dropbox every 6 h |
 | `can0-nmea2000` | — | Brings CAN up before Signal K starts |
 | `tailscaled` | — | Remote access |
+| `holding-tank-dump` | — | Auto sewage discharge (see Boat automations) |
+| `cockpit-light` | — | Dusk-to-23:00 cockpit lighting |
+| `set-timezone.timer` | — | GPS-derived timezone, every 10 min |
 
 NMEA 2000 arrives via `can0`. NMEA 0183 arrives on three feeds configured in Signal K: the wind
 sensor over UDP 10110, and two serial ports at 4800 and 38400 baud. **Signal K owns both serial
 ports**; AvNav reads everything through Signal K rather than opening the ports itself.
+
+### Boat automations
+
+Three custom Python scripts in `/usr/local/bin`, each run by systemd:
+
+| Unit | What it does |
+|---|---|
+| `holding-tank-dump.service` | Auto sewage discharge: turns the dump switch **off** after its timeout, gated on SOG qualifying and a cooldown. Fails **safe** — if the switch cannot be read it does nothing. |
+| `cockpit-light.service` | Light on at computed sunset (from GPS position), off at 23:00 local. If you switch it off manually that evening, it stays off until the next dusk. |
+| `set-timezone.service` + `.timer` | Sets the system timezone from GPS position with `timezonefinder` (offline, no API key), then restarts `cockpit-light` so sunset is recomputed. |
+
+**State as of 2026-11-20: all three run, none can act.** Both Shelly relays are absent from
+BoatNetwork, so the plugin publishes no `electrical.switches` paths at all and the two switch
+scripts read 404 (one per second, which also fills Signal K's access log). Independently,
+`set-timezone` has no position to work from: no GPS provider is configured, and
+`navigation.position` has metadata but has never carried a value. The timezone is set by hand.
+
+The Shellies are `shellyplus1-e465b842fb34` @ `.151` (sewage) and `shellyplus1pm-441793d69434` @
+`.142` (cockpit lights). When they return, **restart Signal K** — the plugin does not reconnect on
+its own.
 
 ## Repository layout
 
@@ -101,15 +172,17 @@ These are real and understood, not mysteries — details in `MIGRATION.md` §14.
 2. **o-charts on `:8083` refuses tailnet clients.** TCP connects, then the provider never reads the
    request — sockets sit in `CLOSE-WAIT` with the bytes unread. LAN and localhost are fine. Workaround:
    `ssh -N -L 8083:127.0.0.1:8083 pi@bossy`, then use `http://localhost:8083`.
-3. **RS485 receives nothing yet — the cable pinout, not the software.** Both ports are wired and
-   Signal K holds them open (`/dev/rs485-1`→`ttyS0` @4800, `/dev/rs485-2`→`ttyS1` @38400). A 60-second
-   passive listen gave zero bytes with zero framing errors, so the line is genuinely silent rather
-   than garbled. A loopback test between the two ports (`tools/rs485-loopback.py`) then showed
-   `tx:32 rx:0` in both directions: the UARTs transmit, and plugging the cable in asserted CTS/DSR,
-   so there *is* an electrical path — but the data pair never carried anything. Cause found: the test
-   cable had **no pin 1**, so A or B was never connected. Re-test with a full breakout.
-   `ioctl(TIOCSRS485)` returns `ENOTTY`, so the direction switching is done by the transceiver, not
-   the UART.
+3. **RS485 pinout — SOLVED 2026-11-21: A/B are DB9 pins 2 and 3, ground on pin 5.** Never a software
+   fault. Both UARTs transmit, and the kernel exposes no RS485 control (`ioctl(TIOCSRS485)` →
+   `ENOTTY`), so direction switching is done in the transceiver. The decisive measurement was taken
+   with COM1 transmitting and a meter on each pin against pin 5: **pin 1 sat dead at 0.00 V** while
+   **pin 2 (1.64 V) and pin 3 (2.53 V)** both rested mid-rail — those are A and B. Pin 1 never carried
+   anything, which is exactly what made the natural "pins 1 and 2" assumption fail, twice.
+   A straight-through cable wired **2–2, 3–3, 5–5 with pin 1 unconnected** now loops back cleanly:
+   `tx:32 rx:32` in both directions, payload intact, no A/B swap needed.
+   `tools/rs485-loopback.py` performs the test, but **stop Signal K first** — it holds both ports open
+   and swallows the bytes. **Instrument pinouts remain unknown**: do not assume a device's pin 2 is A
+   just because this box's is; swap 2 and 3 at the instrument end if the data arrives garbled.
 4. **KIP will be signed out by any reboot.** Signal K signs tokens with a random key generated at
    startup unless `SECRETKEY` is set, so every restart invalidates them — verified: 200 before a
    restart, 401 after. Set `SECRETKEY` in the `signalk` unit environment to make logins stick.
