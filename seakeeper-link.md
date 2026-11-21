@@ -181,7 +181,7 @@ Fields that matter for a plotter integration:
 
 | Field | Meaning |
 |---|---|
-| `flywheel_speed` | **actual rotor rpm**, live — confirmed ramping 0→41 over ~9 s from a power-on. It reads 0 the moment power is cut **because at 41 rpm there is essentially no stored energy** — the rotor really does stop at once. At operating speed (7600/9700 rpm) coast-down takes **hours**, so expect a long decay here, not a step to zero. Not yet observed at speed (§9) |
+| `flywheel_speed` | **actual rotor rpm**, live — confirmed ramping 0→41 over ~9 s from a power-on. It reads 0 the moment power is cut at 41 rpm because there is essentially no stored energy at that speed. At operating speed (7600/9700 rpm) the rotor coasts down over **hours** and this field **tracks the decay** (owner-confirmed from the UI; not captured in this session's telemetry). So rpm can be displayed honestly during shutdown |
 | `flywheel_speed_percent` | 0–100, drives the speed ring |
 | `flywheel_min_speed` / `flywheel_max_speed` | 7600 / 9700 on this unit |
 | `flywheel_crt_selected_speed` | current selector, 0 = max, 1 = min |
@@ -353,13 +353,11 @@ disproved by measurement, not by another guess.
    a client-ID/keepalive interaction. **Relevant before running a Signal K
    bridge on the box** — verify whether the operator's browser UI and the
    bridge can be connected simultaneously.
-6. **What does `flywheel_speed` do during a real coast-down?** At 41 rpm it
-   goes to 0 at once, and rightly so — there is no stored energy at that speed.
-   At 7600/9700 rpm the rotor takes **hours** to stop. Whether the field reports
-   that decaying speed, or holds/latches something, is untested — and it decides
-   whether rpm can be shown honestly on a helm display during shutdown. To test:
-   bring the unit to speed, command `{"power":0}`, and sample
-   `seakeeper/status/1` across the decay.
+6. ~~**What does `flywheel_speed` do during a real coast-down?**~~ **CLOSED
+   2026-11-21.** It reports the decay. The owner confirms the UI shows the
+   speed winding down from operating rpm over hours. Not captured in this
+   session's telemetry, but the answer means rpm is safe to display during
+   shutdown — no need for a guessed "commanded off" state.
 
 ---
 
