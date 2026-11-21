@@ -314,8 +314,23 @@ disproved by measurement, not by another guess.
    announcements.
 2. **Is the address static or DHCP?** It produced APIPA once and `192.168.0.2`
    later, with no DHCP server present. That pattern suggests a DHCP client
-   falling back, but it has not been proven. The MAC-pinned lease in §6.2 makes
-   the question moot for the install.
+   falling back, but it has not been proven. **The address cannot be set or read
+   from the unit's UI — there are no network settings there at all, only the
+   integration mode (Garmin / Raymarine / …).** So there is nothing to configure
+   on the unit; the host must adapt. The MAC-pinned lease in §6.2 makes the
+   question moot either way.
+
+   What is known about stability: `.2` held for the whole session, including
+   across a gyro power on/off and a `/mqtt` reconnection — but **not** across a
+   physical power cycle of the unit, which is the one case that matters for a
+   permanent install. Neither packet capture contained a single `DHCPDISCOVER`,
+   which argues against an actively retrying DHCP client.
+
+   To settle it, in order of cost:
+   - power-cycle the unit, then `ping -c3 192.168.0.2`. Returns → good enough to
+     deploy on.
+   - `sudo tcpdump -ni enp2s0 'port 67 or port 68'` on the box during that
+     power cycle. A `DHCPDISCOVER` proves it is a DHCP client.
 3. **Headless MQTT client — RESOLVED 2026-11-21.** A real MQTT library works
    headlessly; only a hand-rolled WebSocket layer fails.
 
