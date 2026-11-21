@@ -89,6 +89,34 @@ still served `/garmin/config.json` after switching to Raymarine.
  "title":"Seakeeper","icon":"/assets/images/logos/seakeeper-garmin-icon-3_2.png"}
 ```
 
+### 4.1 Why this is so simple — it is an MFD web app
+
+The integration modes are not integrations in any deep sense. The unit publishes
+a **web app for chartplotters**, and the MFD does the rest. The contract is
+plainly visible in what we captured:
+
+1. The MFD discovers the app over mDNS (`_garmin-mrn-html._tcp`).
+2. It fetches `/garmin/config.json` and is told the entry point and title:
+   `{"title":"Seakeeper","path":"/index.html", …}`.
+3. It renders that page in its own browser. The page's JavaScript connects to
+   `ws://<host>:9001/mqtt` for live data and control.
+
+No TLS (443 is closed), no authentication challenge, no proprietary transport.
+Switching to Raymarine did not change the address and the unit still served
+`/garmin/config.json` — it appears to serve the same web app and only change
+what it *advertises*.
+
+**Consequence for this install:** we do not need to emulate a Garmin MFD. Any
+browser that can reach the page works, and any MQTT client that can reach port
+9001 works.
+
+> **Security note.** Commands on `seakeeper/request/1` were accepted with no
+> credentials of any kind — `{"power":1}` worked on the first try. Physical
+> access to that cable is therefore full control of the gyro, including starting
+> and stopping it. That is acceptable on an isolated two-node link, and is one
+> more reason `enp2s0` must stay `never-default` and must not be bridged onto
+> BoatNetwork or the internet.
+
 Open ports: **80**, **22**, **9001**. Closed: 443, 8080.
 
 ---
