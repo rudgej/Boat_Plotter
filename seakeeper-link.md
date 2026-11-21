@@ -132,6 +132,31 @@ The trailing `1` is the **Seakeeper instance number**, taken from
 2. The actual rpm values are **not** in the UI's source — they come from the
    unit in the status message (`flywheel_min_speed`, `flywheel_max_speed`).
 
+**Verified by round trip on 2026-11-21** (unit powered off, so this changes the
+selector only — nothing spins):
+
+| Published | `flywheel_crt_selected_speed` |
+|---|---|
+| `{"flywheel_speed":1}` | `1` |
+| `{"flywheel_speed":0}` | `0` |
+
+And the UI's own mapping, from `settings_page.js`:
+
+```js
+function setActiveSpeedButton(selectedSpeed) {
+    if (selectedSpeed == '1') { $(".btn-6500").addClass("active"); ... }
+    else                        { $(".btn-8450").addClass("active"); ... }
+}
+```
+
+So `1` selects the **lower** of the two speed buttons and `0` the higher. On
+this unit that is **`1` = 7600 rpm, `0` = 9700 rpm**. The class names
+`btn-6500` / `btn-8450` are leftovers from another model and must be ignored.
+
+Do not try to confirm this from the On-screen buttons: `.btn-8450` has
+`active` hardcoded in the static HTML, so an un-updated page always looks like
+"max selected".
+
 ### 5.3 Status — subscribe to `seakeeper/status/1`
 
 Live payload captured from this unit while powered off:
@@ -279,25 +304,43 @@ disproved by measurement, not by another guess.
    later, with no DHCP server present. That pattern suggests a DHCP client
    falling back, but it has not been proven. The MAC-pinned lease in §6.2 makes
    the question moot for the install.
-3. **Headless MQTT client.** A hand-rolled Python WebSocket client completes the
-   HTTP upgrade on `:9001` (`101 Switching Protocols`) but the unit closes the
-   connection before returning a CONNACK. The status data in §5.3 was read
-   through the page's own Paho connection instead.
+3. **Headless MQTT client — RESOLVED 2026-11-21.** A real MQTT library works
+   headlessly; only a hand-rolled WebSocket layer fails.
 
-   Ruled out on 2026-11-21:
+   Verified with `paho-mqtt` (Python), no browser involved:
 
-   | Hypothesis | Test | Result |
-   |---|---|---|
-   | Missing `Origin` header | added `Origin: http://192.168.0.2` | still closed |
-   | Broker allows one client only | dropped the browser's connection first | still closed |
-   | Subprotocol mismatch | tried `mqtt`, then `mqttv3.1` | still closed |
+   ```python
+   import paho.mqtt.client as mqtt
+   cli = mqtt.Client(client_id="n100probe", transport="websockets")
+   cli.ws_set_options(path="/mqtt")
+   cli.connect("192.168.0.2", 9001, 15)
+   cli.subscribe("seakeeper/status/1", qos=0)
+   ```
 
-   **Next move:** capture the browser's *own* handshake rather than guessing —
-   start `sudo tcpdump -ni en2 -s 0 -A 'tcp port 9001' > /tmp/ws.txt`, then load
-   `http://192.168.0.2/`, then replay Paho's exact request bytes and frame
-   sequence. Do this before writing any Signal K code around MQTT.
+   Result: `connected rc=Success`, messages arriving on `seakeeper/status/1`
+   with `flywheel_speed`, `flywheel_speed_percent`, `stabilize_available`,
+   `stabilize_enabled`, `flywheel_min_speed` (7600) and `flywheel_max_speed`
+   (9700).
+
+   **The trap was ours, not theirs.** A hand-written WebSocket implementation
+   completed the HTTP upgrade (`101`) but was dropped before CONNACK. The same
+   MQTT CONNECT bytes sent from a browser WebSocket returned `20 02 00 00`
+   immediately — so the MQTT payload was always correct and the fault was in
+   our manual framing. **Do not hand-roll the WebSocket layer**; use
+   `paho-mqtt` with `transport="websockets"`, or `mosquitto_sub --url
+   ws://192.168.0.2:9001/mqtt`.
+
+   Note the UI's own JS bypasses this by using Paho in the browser. Either way,
+   a native client is available — no headless Chromium required.
 4. **Do the other integration modes move the address?** Raymarine was tested
    and did not. Glass Helm and Simrad were not tested.
+5. **A second MQTT client appears to displace the UI's connection.** After a
+   Python client connected, the open browser page stopped reflecting state
+   changes it should have received (its DOM stayed on the hardcoded defaults
+   while the unit reported the new value). Not yet isolated: single-connection
+   broker, or a client-ID/keepalive interaction. **Relevant before running a
+   Signal K bridge on the box** — verify whether the operator's browser UI and
+   the bridge can be connected simultaneously.
 
 ---
 
