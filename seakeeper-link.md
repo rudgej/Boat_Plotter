@@ -181,7 +181,7 @@ Fields that matter for a plotter integration:
 
 | Field | Meaning |
 |---|---|
-| `flywheel_speed` | **actual rpm**, live — confirmed ramping 0→41 over ~9 s from a power-on. **Reads 0 the instant power is commanded off**; it does not show spool-down, so it cannot be used to tell whether the rotor is still spinning |
+| `flywheel_speed` | **actual rotor rpm**, live — confirmed ramping 0→41 over ~9 s from a power-on. It reads 0 the moment power is cut **because at 41 rpm there is essentially no stored energy** — the rotor really does stop at once. At operating speed (7600/9700 rpm) coast-down takes **hours**, so expect a long decay here, not a step to zero. Not yet observed at speed (§9) |
 | `flywheel_speed_percent` | 0–100, drives the speed ring |
 | `flywheel_min_speed` / `flywheel_max_speed` | 7600 / 9700 on this unit |
 | `flywheel_crt_selected_speed` | current selector, 0 = max, 1 = min |
@@ -281,7 +281,9 @@ t(s)  rpm  power
  6.3   22      1
  8.3   35      1
  9.2   41      1     <- ~4.5 rpm/s early in the ramp
-10.3    0      0     <- {"power":0}: rpm drops to 0 at once, no spool-down shown
+10.3    0      0     <- {"power":0}: 0 immediately, as expected at 41 rpm
+                        (no stored energy). At 7600/9700 rpm the rotor coasts
+                        down over HOURS - not yet observed, see §9
 ```
 
 ---
@@ -345,12 +347,19 @@ disproved by measurement, not by another guess.
 4. **Do the other integration modes move the address?** Raymarine was tested
    and did not. Glass Helm and Simrad were not tested.
 5. **A second MQTT client appears to displace the UI's connection.** After a
-   Python client connected, the open browser page stopped reflecting state
-   changes it should have received (its DOM stayed on the hardcoded defaults
-   while the unit reported the new value). Not yet isolated: single-connection
-   broker, or a client-ID/keepalive interaction. **Relevant before running a
-   Signal K bridge on the box** — verify whether the operator's browser UI and
-   the bridge can be connected simultaneously.
+   Python client connected, the open browser page stopped reflecting changes it
+   should have received (its DOM stayed on the hardcoded defaults while the
+   unit reported the new value). Not yet isolated: single-connection broker, or
+   a client-ID/keepalive interaction. **Relevant before running a Signal K
+   bridge on the box** — verify whether the operator's browser UI and the
+   bridge can be connected simultaneously.
+6. **What does `flywheel_speed` do during a real coast-down?** At 41 rpm it
+   goes to 0 at once, and rightly so — there is no stored energy at that speed.
+   At 7600/9700 rpm the rotor takes **hours** to stop. Whether the field reports
+   that decaying speed, or holds/latches something, is untested — and it decides
+   whether rpm can be shown honestly on a helm display during shutdown. To test:
+   bring the unit to speed, command `{"power":0}`, and sample
+   `seakeeper/status/1` across the decay.
 
 ---
 
