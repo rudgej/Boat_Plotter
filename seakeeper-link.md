@@ -336,8 +336,23 @@ disproved by measurement, not by another guess.
 ## 9. Open questions
 
 1. **Why did the carrier cycle at ~16 s for a period?** It stopped on its own
-   and the UI then worked normally. Candidates: adapter/PHY instability, the
-   unit's boot sequence, a marginal cable. Not resolved. If it recurs, capture
+   and the UI then worked normally.
+
+   **Leading suspect: Mac power management, not the boat.** macOS suspends USB
+   Ethernet adapters across sleep and DarkWake, and the interface then reports
+   `status: inactive` with no carrier. `pmset -g log` confirms a DarkWake at
+   17:05 and a full sleep at **18:39 → 21:45**, and after that wake the link
+   came back `active` and `curl` returned `200` first time. So several of the
+   "carrier is dropping" observations may simply have been the *laptop* dozing.
+
+   Caveat that stops this being conclusive: the metronome we measured ran
+   17:35–17:36, which predates that sleep window, and the poll was actively
+   sending traffic throughout. So power management is a strong candidate for
+   some drops, not proven for all of them.
+
+   **Mitigation for future sessions:** run `caffeinate -dimsu` in a terminal for
+   the duration of any link test, so a dozing laptop cannot be mistaken for a
+   fault on the boat. If it still cycles with the Mac held awake, capture
    `tcpdump -ni en2 -e` across a drop and compare against the unit's own
    announcements.
 2. **Is the address static or DHCP?** It produced APIPA once and `192.168.0.2`
