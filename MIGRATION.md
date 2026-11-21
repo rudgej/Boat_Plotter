@@ -1548,13 +1548,20 @@ Three traps worth keeping:
 
 ## 18. Seakeeper — direct Ethernet on `enp2s0`
 
+> **CORRECTED 2026-11-21.** This section used to claim the SeaKeeper sits at
+> `172.16.102.1`. It does not, and never did. The unit was measured answering on
+> **`192.168.0.2`**. The evidence, the MQTT control/telemetry interface and the
+> working host settings are in **`seakeeper-link.md`** — read that first. The
+> text below is kept for the shape of the configuration, with the address
+> corrected.
+
 `enp2s0` was reserved for the Seakeeper but had no address configuration, so a cable in that
 socket did nothing. It now has a static connection:
 
 | | |
 |---|---|
 | Interface | `enp2s0` (the second 2.5 GbE port) |
-| Address | **172.16.102.254/24** |
+| Address | **192.168.0.254/24** |
 | Gateway | none — `ipv4.never-default yes`, so it can never steal the internet route |
 | DHCP | none on this interface (static only) |
 | NM connection | `seakeeper`, `autoconnect yes`, priority 50 |
@@ -1562,46 +1569,66 @@ socket did nothing. It now has a static connection:
 Captured in the repo at
 `pi-dock/pi-config/etc/NetworkManager/system-connections/seakeeper.nmconnection`, so §4 restores it.
 
-### 18.1 Why 172.16.102.x
+### 18.1 Why 192.168.0.x
 
-The assumed Seakeeper address is **`172.16.102.1`** — the same assumption the ESP32 bridge in
-`seakeeper-esp/SETUP.md` §5 was built around (`172.16.102.254/24` downlink, `172.16.102.1` =
-Seakeeper). Using the identical subnet on `enp2s0` means **the ESP32 bridge and a direct cable are
-interchangeable**: the Seakeeper sees the same network either way, and nothing has to be
-reconfigured between the two test setups.
+**Measured, not assumed.** On 2026-11-21 the unit answered ping, HTTP and TCP on
+**`192.168.0.2`**: web UI on port 80, SSH on 22, and an MQTT-over-WebSocket listener on 9001.
+It is a **DHCP client** — with no server on the cable it had earlier been seen on an APIPA
+address (`169.254.5.161`), which is what made the old guess look plausible and the address look
+unstable.
+
+`seakeeper-dhcp.service` pins it. `/etc/dnsmasq.d/seakeeper.conf` serves DHCP on `enp2s0` only
+(`port=0` so it never touches :53, no gateway, no DNS) with:
+
+```
+dhcp-host=1c:95:9f:07:22:70,192.168.0.2
+```
+
+So `http://192.168.0.2/` is correct across power cycles rather than by luck.
+
+The ESP32 bridge described in `seakeeper-esp/SETUP.md` §5 predates this measurement and still
+carries the old `172.16.102.x` figures. It has **not** been retested against a unit living on
+`192.168.0.2`; a revived bridge would need its downlink moved to `192.168.0.254/24` and its port
+forward pointed at `192.168.0.2`.
 
 ### 18.2 Two ways to connect it
 
 | Setup | Path to the Seakeeper web UI |
 |---|---|
-| **Direct cable** (first test) | cable into `enp2s0`; browse `http://172.16.102.1/` |
-| Via the ESP32 bridge | Seakeeper → ESP32 RJ45 → Wi-Fi → BoatNetwork; browse `http://192.168.10.50/` |
+| **Direct cable** (now the live arrangement) | cable into `enp2s0`; browse `http://192.168.0.2/` |
+| Via the ESP32 bridge (not currently in use) | Seakeeper → ESP32 RJ45 → Wi-Fi → BoatNetwork; would need `http://192.168.10.50/` with the forward retargeted |
 
-`launch-seakeeper.sh` (the dock button) points at the bridge, `http://192.168.10.50/`. For a direct
-cable, browse `http://172.16.102.1/`; change the launcher to that URL if the direct link becomes
-the permanent arrangement.
+`launch-seakeeper.sh` (the dock button) now points at `http://192.168.0.2/`, the direct cable. It
+still honours `/home/pi/.config/seakeeper-url` if a different target is wanted.
 
-### 18.3 If the Seakeeper turns out to be a DHCP client
+### 18.3 DHCP — answered: the unit *is* a DHCP client
 
-The static address only works if the Seakeeper holds `172.16.102.1` itself. If it is a DHCP client
-it will get nothing from this interface and the link will look dead. Fallback — a DHCP server
-scoped to **this interface only**. Never a general one: a stray `dnsmasq` that binds `0.0.0.0:53`
-breaks the BoatNetwork AP (see §8).
+This used to be a conditional. It is now fact: the unit has no static address. With nothing
+serving DHCP it fell back to APIPA (`169.254.5.161`), and later came up on `192.168.0.2` — which
+is why chasing its address felt like chasing a ghost.
+
+So `enp2s0` **does** run a DHCP server, scoped to that interface only. Never a general one: a
+`dnsmasq` that binds `0.0.0.0:53` breaks the BoatNetwork AP (see §8).
+
+`/etc/dnsmasq.d/seakeeper.conf` (captured at `pi-dock/pi-config/etc/dnsmasq.d/seakeeper.conf`):
 
 ```
-# /etc/dnsmasq.d/seakeeper.conf
 interface=enp2s0
 bind-dynamic
-port=0                          # DHCP only, no DNS
-dhcp-range=172.16.102.100,172.16.102.200,12h
-dhcp-option=3                    # no gateway: keep it isolated
+port=0                                   # DHCP only, no DNS
+dhcp-range=192.168.0.100,192.168.0.200,12h
+dhcp-host=1c:95:9f:07:22:70,192.168.0.2,12h   # the SeaKeeper, always .2
+dhcp-option=3                            # no gateway: keep it isolated
+dhcp-option=6                            # no DNS either
 ```
 
-Then run it as its own unit with `--conf-file=/etc/dnsmasq.d/seakeeper.conf`, find the lease, and
-point the launcher at whatever address it got.
+Run by its own unit, `seakeeper-dhcp.service`
+(`pi-dock/pi-config/etc/systemd/system/seakeeper-dhcp.service`), so it can never be confused with
+the standalone `dnsmasq.service`.
 
-**Decide which by testing:** plug the Seakeeper into `enp2s0`, then from the box
-`ping -c3 172.16.102.1`. A reply means it is static and nothing more is needed.
+**Verify from the box:** `ping -c3 192.168.0.2`, then `curl -o /dev/null -w '%{http_code}\n'
+http://192.168.0.2/` — expect `200`. `dnsmasq --test -C /etc/dnsmasq.d/seakeeper.conf` checks the
+config before you trust it.
 ---
 
 ## 19. Charts — o-charts (oeSENC) via the AvNav `ochartsng` plugin

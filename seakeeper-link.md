@@ -367,11 +367,31 @@ disproved by measurement, not by another guess.
 
 ## 10. Next steps (morning)
 
-- [ ] Point `192.168.0.2` at the box: update `seakeeper.nmconnection`,
-      `setup-seakeeper-enp2s0.sh`, `launch-seakeeper.sh`
-- [ ] Add the dnsmasq MAC-pinned lease and verify the unit keeps `.2` across a
-      power cycle
-- [ ] Correct `MIGRATION.md` §18 and `seakeeper-esp/SETUP.md` §5–7
+- [x] Point `192.168.0.2` at the box — `seakeeper.nmconnection` now carries
+      `192.168.0.254/24`, `setup-seakeeper-enp2s0.sh` uses the same, and
+      `launch-seakeeper.sh` opens `http://192.168.0.2/`
+- [x] Add a MAC-pinned lease —
+      `pi-dock/pi-config/etc/dnsmasq.d/seakeeper.conf` plus
+      `pi-dock/pi-config/etc/systemd/system/seakeeper-dhcp.service`
+- [x] Correct `MIGRATION.md` §18 and `seakeeper-esp/SETUP.md` §5/§7
+- [ ] **On the box, first boot:** copy the two new files, `dnsmasq --test -C
+      /etc/dnsmasq.d/seakeeper.conf`, `systemctl enable --now seakeeper-dhcp`,
+      then confirm the unit takes `.2` between a power cycle
 - [ ] Decide on a headless MQTT subscriber for Signal K (read-only first:
       rpm, roll, alarm state), with the six commands behind an explicit switch
 - [ ] Re-test the ~16 s carrier cycling if it reappears
+
+### Files touched for this work
+
+| File | Change |
+|---|---|
+| `seakeeper-link.md` | this document |
+| `README.md` | network table, access table, repository layout |
+| `MIGRATION.md` | §18 corrected, §18.1 rewritten, §18.3 resolved |
+| `seakeeper-esp/SETUP.md` | §5 port-forward warned, §7 correction block |
+| `pi-dock/pi-config/etc/NetworkManager/system-connections/seakeeper.nmconnection` | `192.168.0.254/24` |
+| `pi-dock/pi-config/etc/NetworkManager/system-connections/README.md` | table row |
+| `pi-dock/pi-config/usr/local/bin/launch-seakeeper.sh` | `http://192.168.0.2/` |
+| `pi-dock/pi-config/etc/dnsmasq.d/seakeeper.conf` | **new** — DHCP + MAC pin |
+| `pi-dock/pi-config/etc/systemd/system/seakeeper-dhcp.service` | **new** — its unit |
+| `n100/setup-seakeeper-enp2s0.sh` | `ADDR=192.168.0.254/24`, header rewritten |

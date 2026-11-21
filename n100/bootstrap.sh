@@ -40,7 +40,7 @@ chromium nodejs nginx rclone zenity grim wlr-randr"
 UNITS="boatnetwork.service boatnetwork-dnsmasq.service can0-nmea2000.service
 can-watchdog.timer shelly-watchdog.timer holding-tank-dump.service
 cockpit-light.service memwatch.timer set-timezone.timer bt-hifi.service
-manuals-sync.timer"
+manuals-sync.timer seakeeper-dhcp.service"
 
 say "0. sanity"
 [[ -d "$REPO_DIR/pi-dock" ]] || { echo "pi-dock/ not found - run from the repo root" >&2; exit 1; }

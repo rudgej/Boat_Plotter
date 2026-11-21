@@ -1,17 +1,19 @@
 #!/bin/bash
 # Direct Seakeeper link on enp2s0.
 #
-# The assumed Seakeeper IP is 172.16.102.1 (from seakeeper-esp/SETUP.md 5, the
-# ChatGPT assumption the ESP32 bridge was also built around). The bridge used
-# 172.16.102.254/24 as its downlink, so the box uses the same address here: the
-# Seakeeper sees the same subnet it was pre-configured for, and the bridge and a
-# direct cable are interchangeable.
+# The Seakeeper is a DHCP client. Measured 2026-11-21: it answers on
+# 192.168.0.2 (HTTP 80, SSH 22, MQTT-over-WebSocket 9001). The 172.16.102.x
+# figure this script used to carry was a guess inherited from
+# seakeeper-esp/SETUP.md and was never true. See seakeeper-link.md.
 #
 # never-default: enp2s0 must never become the internet route (wlp3s0/enp4s0 are).
 set -uo pipefail
 
 CON=seakeeper
-ADDR=172.16.102.254/24
+# Measured 2026-11-21: the unit answers on 192.168.0.2, not 172.16.102.1.
+# The 172.16.102.x figure was a guess recorded in seakeeper-esp/SETUP.md and
+# inherited by everything downstream. See seakeeper-link.md.
+ADDR=192.168.0.254/24
 
 if nmcli -t -f NAME con show | grep -qx "$CON"; then
     echo "connection '$CON' already exists - showing it"

@@ -8,7 +8,11 @@ interface-name=enp2s0
 [ethernet]
 
 [ipv4]
-address1=172.16.102.254/24
+# 192.168.0.0/24, NOT the 172.16.102.0/24 this connection used to carry. The
+# unit was measured at 192.168.0.2 on 2026-11-21; the old 172.16.102.x figure
+# came from a guess in seakeeper-esp/SETUP.md and was never true. See
+# seakeeper-link.md at the repo root.
+address1=192.168.0.254/24
 method=manual
 never-default=true
 

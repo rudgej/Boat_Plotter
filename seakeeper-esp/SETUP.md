@@ -115,7 +115,9 @@ The bridge is now pre-configured for ChatGPT's assumed Seakeeper IP (`172.16.102
 - Wi-Fi uplink: BoatNetwork, static `192.168.10.50`.
 - Ethernet downlink: `172.16.102.254/24`, DHCP + NAT on (pool `172.16.102.1-100`).
 - Admin UI moved to port 8080 → `http://192.168.10.50:8080/`.
-- Port forward: `192.168.10.50:80 -> 172.16.102.1:80`.
+- Port forward: `192.168.10.50:80 -> 172.16.102.1:80`. **Wrong target — see the
+  correction in §7.** The unit answers on `192.168.0.2`; a revived bridge needs
+  `portmap add TCP 80 192.168.0.2 80` and a `192.168.0.254/24` downlink.
 
 The Pi's Seakeeper button (`http://192.168.10.50/`) therefore forwards to the
 Seakeeper web UI.
@@ -161,8 +163,9 @@ Either way the Pi reaches it at **`http://192.168.10.50/`** (the Pi's
   now times out (forward target absent), `http://192.168.10.50:8080/` serves the
   admin UI.
 
-Still to verify on the boat: the Seakeeper's real IP (static `172.16.102.1` vs
-DHCP).
+**Resolved 2026-11-21:** the unit is a **DHCP client** and answers on **`192.168.0.2`**.
+It was never at `172.16.102.1`. See `seakeeper-link.md` at the repo root for the
+measurements, the web UI, and the MQTT interface.
 
 ## 7. Direct connection — no bridge (added 2026-11-19)
 
@@ -170,7 +173,14 @@ The bridge is no longer the only option. The box's second Ethernet port `enp2s0`
 **172.16.102.254/24**, the same subnet this bridge used on its downlink, so the Seakeeper can be
 cabled **straight into the box** and sees exactly the network it was pre-configured for.
 
-- Direct: cable → `enp2s0`, browse **`http://172.16.102.1/`** from the box.
+- Direct: cable → `enp2s0`, browse **`http://192.168.0.2/`** from the box.
+
+  > **CORRECTION 2026-11-21.** The direct link was measured on the boat: the unit is a
+  > DHCP client that answers on **`192.168.0.2`** — web UI on 80, SSH on 22, MQTT over
+  > WebSocket on 9001. It was never at `172.16.102.1`; that figure started as a guess in
+  > §5 of this document and was inherited by the box config and by the bridge preset.
+  > Everything below that mentions `172.16.102.x` is that original guess, kept for the
+  > record. Working configuration and evidence: `seakeeper-link.md` at the repo root.
 - Via the bridge: unchanged, browse **`http://192.168.10.50/`**.
 
 The two are interchangeable, which is the point: the assumed `.1` works either way. Full details,

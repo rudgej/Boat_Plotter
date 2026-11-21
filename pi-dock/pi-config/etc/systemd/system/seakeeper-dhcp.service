@@ -1,0 +1,17 @@
+[Unit]
+Description=Seakeeper DHCP on enp2s0 (MAC-pinned lease)
+Documentation=file:///etc/dnsmasq.d/seakeeper.conf
+After=NetworkManager.service
+Wants=NetworkManager.service
+# Never run alongside the standalone dnsmasq: two instances cannot share :53,
+# and this one is DHCP-only (port=0) so it has no business holding :53.
+Conflicts=dnsmasq.service
+
+[Service]
+Type=simple
+ExecStart=/usr/sbin/dnsmasq -k -C /etc/dnsmasq.d/seakeeper.conf
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

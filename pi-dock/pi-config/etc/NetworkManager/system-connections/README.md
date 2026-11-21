@@ -7,7 +7,7 @@ Captured from the N100 so a rebuild restores the network rather than guessing it
 | `BoatNetwork` | `wlx6815790f593c` (USB BrosTrend AX900) | **The AP**. Sensors and the Seakeeper bridge join this | **192.168.10.1/24**, DHCP `.100–.200` |
 | `Bossywifi` | `wlp3s0` (onboard RTL8821CE) | Boat uplink, **priority 10** | DHCP |
 | `3cpr` | `wlp3s0` | Home uplink, **priority 5** | DHCP |
-| `seakeeper` | `enp2s0` | Direct Seakeeper link, `never-default` | 172.16.102.254/24 |
+| `seakeeper` | `enp2s0` | Direct SeaKeeper link, `never-default` | 192.168.0.254/24 |
 
 ## ⚠️ Passwords are stripped
 
