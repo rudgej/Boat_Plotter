@@ -11,3 +11,7 @@ managed_components/
 # PlatformIO
 .pio/
 sdkconfig.seakeeper-relay
+
+# generated sdkconfigs (keep sdkconfig.defaults)
+sdkconfig.*
+!sdkconfig.defaults
