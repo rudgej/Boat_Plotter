@@ -1,5 +1,18 @@
 [connection]
 id=seakeeper
+# FALLBACK ONLY — not used with the relay bridge.
+#
+# The production path is the WT32-ETH01 relay (seakeeper-esp/relay/), which owns
+# the Ethernet side and exposes the unit on BoatNetwork at 192.168.10.50. In
+# that topology enp2s0 is unplugged and this profile does nothing.
+#
+# Keep it for the direct-cable diagnostic: plug the unit straight into enp2s0,
+# bring this profile up, and the unit is again at 192.168.0.2.
+#
+# 192.168.0.0/24, NOT the 172.16.102.0/24 this connection used to carry. The
+# unit was measured at 192.168.0.2 on 2026-11-21; the old 172.16.102.x figure
+# came from a guess in seakeeper-esp/SETUP.md and was never true. See
+# seakeeper-link.md at the repo root.
 uuid=9e67d997-2dae-4517-8222-916364761bca
 type=ethernet
 autoconnect-priority=50

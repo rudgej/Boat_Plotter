@@ -20,7 +20,7 @@ All of these work from anywhere over Tailscale, and from the boat Wi-Fi without 
 | Manuals (PDFs) | `http://bossy:8081` |
 | o-charts manager | `http://bossy:8083/static/index.html` — **LAN only, see Known gaps** |
 | Shell | `ssh pi@bossy` |
-| Seakeeper UI | `http://192.168.0.2/` — on the `enp2s0` cable; see `seakeeper-link.md` |
+| Seakeeper UI | `http://192.168.10.50/` — through the ESP32 relay bridge on BoatNetwork; see `seakeeper-esp/relay/README.md` |
 
 **Signal K security is on.** Reads are open; writes need a login. The user is `boat`; the password
 is *not* in this repo — it lives in `/etc/signalk-automation.env` on the box, which is also what the
@@ -90,7 +90,7 @@ HAT.
 |---|---|
 | `wlp3s0` (onboard RTL8821CE) | Internet uplink. `Bossywifi` (priority 10), `3cpr` (priority 5). Currently `192.168.1.183` |
 | `wlx6815790f593c` (BrosTrend AX900) | **BoatNetwork** access point, `192.168.10.1/24`, DHCP `.100–.200` |
-| `enp2s0` | Seakeeper, `192.168.0.254/24`, `never-default` — unit answers on `192.168.0.2` |
+| `enp2s0` | **Unused in normal operation.** The SeaKeeper sits behind the ESP32 relay bridge; its `192.168.0.254/24` profile is kept only for the direct-cable fallback |
 | `enp4s0` | Second uplink — cable unplugged at time of writing |
 
 **Tailscale** (WireGuard mesh, no port forwarding) is the remote-access path: `bossy` is

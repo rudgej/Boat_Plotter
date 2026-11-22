@@ -63,6 +63,20 @@ static void set_nonblocking(int fd)
     }
 }
 
+/* lwIP's default keepalive idle is two hours, which is longer than the relay's
+ * own idle timeout and therefore useless on its own. Tune it so a link that
+ * silently died is detected in about 90 s. */
+static void set_keepalive(int fd)
+{
+    int one = 1;
+    int idle = 60, intvl = 10, cnt = 3;
+
+    setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &intvl, sizeof(intvl));
+    setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &cnt, sizeof(cnt));
+}
+
 /* Binds to a fixed local address. Used for both directions: the listener so it
  * is only reachable from BoatNetwork, and the upstream socket so the SeaKeeper
  * sees a reply address it can reach. */
@@ -288,7 +302,7 @@ static void relay_task(void *arg)
 
     int one = 1;
     setsockopt(up, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-    setsockopt(up, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
+    set_keepalive(up);
 
     /* Source the connection from the Ethernet address. Without this the source
      * address depends on lwIP's route choice, and the SeaKeeper would be asked
@@ -360,6 +374,7 @@ static void listener_task(void *arg)
         ESP_LOGI(TAG, "%s: " CFG_STA_IP ":%u -> " CFG_UPSTREAM_HOST ":%u",
                  cfg->name, cfg->listen_port, cfg->upstream_port);
 
+        int accept_fails = 0;
         for (;;) {
             struct sockaddr_in peer;
             socklen_t plen = sizeof(peer);
@@ -368,10 +383,19 @@ static void listener_task(void *arg)
                 if (errno == EINTR) {
                     continue;
                 }
+                /* The interface can come back with the listening socket left
+                 * unusable. Recreate it rather than retrying a dead handle. */
+                if (++accept_fails >= 3) {
+                    ESP_LOGW(TAG, "%s: accept keeps failing (errno %d), reopening listener",
+                             cfg->name, errno);
+                    close(ls);
+                    break;
+                }
                 ESP_LOGW(TAG, "%s: accept failed: errno %d", cfg->name, errno);
                 vTaskDelay(pdMS_TO_TICKS(200));
                 continue;
             }
+            accept_fails = 0;
 
             if (xSemaphoreTake(cfg->slots, 0) != pdTRUE) {
                 ESP_LOGW(TAG, "%s: all %u slots in use, refusing", cfg->name,
@@ -392,7 +416,7 @@ static void listener_task(void *arg)
             job->slots         = cfg->slots;
 
             setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
-            setsockopt(c, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
+            set_keepalive(c);
 
             if (xTaskCreate(relay_task, cfg->name, RELAY_TASK_STACK, job,
                             RELAY_TASK_PRIO, NULL) != pdPASS) {
