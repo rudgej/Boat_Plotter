@@ -34,32 +34,33 @@ needs to change.
 
 ## Configuration
 
-Everything adjustable is in `main/board_config.h`:
+There is none, deliberately. This is a single-purpose component for one board
+in one boat, so every value is a fixed literal in `src/board_config.h` - there
+are no runtime settings, no build-time overrides and no config file. Changing
+the topology means editing that file and reflashing.
 
-| Setting | Default | Notes |
-|---------|---------|-------|
-| `CFG_WIFI_SSID` | `BoatNetwork` | |
-| `CFG_WIFI_PASSWORD` | *(empty)* | Empty means open network |
-| `CFG_STA_IP` | `192.168.10.50` | Outside the AP's `.100`-`.200` pool |
-| `CFG_ETH_IP` | `192.168.0.254` | Must stay inside the SeaKeeper's `/24` |
-| `CFG_UPSTREAM_HOST` | `192.168.0.2` | The SeaKeeper |
+| Constant | Value | Why it is that value |
+|----------|-------|----------------------|
+| `CFG_WIFI_SSID` | `BoatNetwork` | the N100's AP |
+| `CFG_WIFI_PASSWORD` | *(empty)* | fill in; the AP is WPA2 |
+| `CFG_STA_IP` | `192.168.10.50` | outside the AP's `.100`-`.200` pool |
+| `CFG_ETH_IP` | `192.168.0.254` | same `/24` as the unit, used as the source address |
+| `CFG_UPSTREAM_HOST` | `192.168.0.2` | the SeaKeeper |
+| `CFG_PORT_WEB` / `CFG_PORT_MQTT` | `80` / `9001` | the only two services needed |
 
-### Credentials without committing them
+The Wi-Fi password is the one value you must edit. If it is left empty the
+firmware logs a warning at boot and will not associate with the WPA2 AP.
 
-Create `src/secrets.h` (git-ignored) and it is picked up automatically:
+## Network boundary
 
-```c
-#pragma once
-#define CFG_WIFI_PASSWORD "the-real-password"
-```
+The board is deliberately closed in both directions:
 
-Alternatively override at build time without editing anything:
-
-```sh
-pio run -DCFG_WIFI_PASSWORD='"the-real-password"'
-```
-
-No source change is needed to rotate the password - rebuild and reflash.
+- Listeners bind to `192.168.10.50` only, so ports 80 and 9001 are **not**
+  reachable from the Ethernet side. They are not bound to `INADDR_ANY`.
+- Upstream sockets are bound to `192.168.0.254` before connecting, so the unit
+  always sees a source address in its own `/24` and can reply without a gateway.
+- A connection with no traffic in either direction for 10 minutes is dropped,
+  so a stalled client cannot hold one of the six relay slots until reboot.
 
 ## Wiring (WT32-ETH01)
 

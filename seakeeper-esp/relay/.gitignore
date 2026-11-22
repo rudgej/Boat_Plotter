@@ -1,6 +1,3 @@
-# real credentials never leave the machine
-src/secrets.h
-
 # ESP-IDF build output and local config
 build/
 sdkconfig

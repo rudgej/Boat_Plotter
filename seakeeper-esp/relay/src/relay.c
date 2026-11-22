@@ -1,11 +1,14 @@
-/* TCP relay implementation.
+/* TCP relay: BoatNetwork in, SeaKeeper out.
  *
- * One listener task per port. Each accepted connection gets its own task which
- * connects upstream (sourced from the Ethernet interface, because that is the
- * route to the upstream) and then pumps bytes both ways with select().
+ * Not a router and not a general-purpose component. Listeners bind only to the
+ * BoatNetwork address, so nothing is reachable from the Ethernet side, and
+ * every upstream connection is bound to the Ethernet address so the unit
+ * always sees 192.168.0.254 - the one address in its own /24 that it can
+ * answer without a gateway.
  *
- * Sockets are non-blocking; buffers are per direction and compacted as data is
- * forwarded. Half-close is propagated so HTTP and WebSocket teardown behave.
+ * One listener task per port; each accepted connection gets a task that pumps
+ * bytes both ways with select(). Sockets are non-blocking, buffers are per
+ * direction, and half-close is propagated once the matching buffer is drained.
  */
 
 #include <string.h>
@@ -21,31 +24,30 @@
 #include "lwip/sockets.h"
 #include "lwip/inet.h"
 
+#include "board_config.h"
 #include "relay.h"
 
 static const char *TAG = "relay";
 
-#define RELAY_MAX_CONNS      6      /* concurrent connections, all ports */
+#define RELAY_MAX_CONNS      6
 #define RELAY_BUF_SIZE       1024   /* per direction, per connection */
 #define RELAY_CONNECT_MS     5000   /* upstream connect timeout */
+#define RELAY_IDLE_MS        600000 /* drop a connection with no traffic at all */
 #define RELAY_LISTEN_STACK   4096
 #define RELAY_TASK_STACK     6144   /* holds 2 x RELAY_BUF_SIZE of buffers */
 #define RELAY_TASK_PRIO      5
-#define RELAY_MAX_LISTENERS  4
+#define RELAY_MAX_LISTENERS  2
 
 typedef struct {
     int      client_fd;
-    int      upstream_fd;
-    char     name[16];
-    char     host[32];
-    uint16_t port;
+    const char *name;           /* points into s_cfg, which is static */
+    uint16_t upstream_port;
 } relay_job_t;
 
 typedef struct {
-    char     name[16];
-    char     host[32];
+    const char *name;
     uint16_t listen_port;
-    uint16_t target_port;
+    uint16_t upstream_port;
 } listener_cfg_t;
 
 static listener_cfg_t    s_cfg[RELAY_MAX_LISTENERS];
@@ -60,8 +62,24 @@ static void set_nonblocking(int fd)
     }
 }
 
-/* Non-blocking connect with a bound wait, so a missing SeaKeeper cannot stall
- * the listener. Returns 0 on success. */
+/* Binds to a fixed local address. Used for both directions: the listener so it
+ * is only reachable from BoatNetwork, and the upstream socket so the SeaKeeper
+ * sees a reply address it can reach. */
+static int bind_to(int fd, const char *ip, uint16_t port)
+{
+    struct sockaddr_in a;
+    memset(&a, 0, sizeof(a));
+    a.sin_family = AF_INET;
+    a.sin_port   = htons(port);
+    if (inet_pton(AF_INET, ip, &a.sin_addr) != 1) {
+        errno = EINVAL;
+        return -1;
+    }
+    return bind(fd, (struct sockaddr *)&a, sizeof(a));
+}
+
+/* Non-blocking connect with a bounded wait, so a missing SeaKeeper cannot stall
+ * the connection task. Returns 0 on success. */
 static int connect_timeout(int fd, const struct sockaddr_in *dst, int timeout_ms)
 {
     set_nonblocking(fd);
@@ -114,19 +132,34 @@ static void pump_buf_compact(pump_buf_t *b)
     }
 }
 
-/* Pumps until both directions are finished or an error occurs.
- * Returns 0 on clean close, -1 on error. */
-static int pump(int a, int b)
+/* Pumps until the connection is finished, fails, or goes idle.
+ * Returns 0 on clean close, -1 on error or timeout. */
+static int pump(int a, int b, const char *name)
 {
-    pump_buf_t ab;  /* data read from a, to be written to b */
-    pump_buf_t ba;  /* data read from b, to be written to a */
+    pump_buf_t ab;  /* read from a, to be written to b */
+    pump_buf_t ba;  /* read from b, to be written to a */
     bool a_eof = false, b_eof = false;
     bool a_wr_shut = false, b_wr_shut = false;
+    TickType_t last = xTaskGetTickCount();
 
     memset(&ab, 0, sizeof(ab));
     memset(&ba, 0, sizeof(ba));
 
     for (;;) {
+        /* Finished only when both peers have closed AND everything already
+         * read has been written out. Closing on the EOFs alone would truncate
+         * a response that arrives just before the upstream closes. */
+        if (a_eof && b_eof && ab.len == ab.off && ba.len == ba.off) {
+            return 0;
+        }
+
+        /* Without this, a peer that opens a connection and then goes quiet
+         * holds one of the RELAY_MAX_CONNS slots until reboot. */
+        if ((TickType_t)(xTaskGetTickCount() - last) > pdMS_TO_TICKS(RELAY_IDLE_MS)) {
+            ESP_LOGW(TAG, "%s: idle for %d ms, closing", name, RELAY_IDLE_MS);
+            return -1;
+        }
+
         /* Propagate half-close once the matching buffer is drained. */
         if (a_eof && ab.len == ab.off && !b_wr_shut) {
             shutdown(b, SHUT_WR);
@@ -135,9 +168,6 @@ static int pump(int a, int b)
         if (b_eof && ba.len == ba.off && !a_wr_shut) {
             shutdown(a, SHUT_WR);
             a_wr_shut = true;
-        }
-        if (a_eof && b_eof) {
-            return 0;
         }
 
         fd_set rf, wf;
@@ -178,8 +208,10 @@ static int pump(int a, int b)
             return -1;
         }
         if (r == 0) {
-            continue;   /* idle tick; keeps the loop responsive */
+            continue;   /* idle tick; the timeout is checked at loop top */
         }
+
+        bool progress = false;
 
         /* a -> b */
         if (!a_eof && FD_ISSET(a, &rf)) {
@@ -187,6 +219,7 @@ static int pump(int a, int b)
             int n = recv(a, ab.buf + ab.len, RELAY_BUF_SIZE - ab.len, 0);
             if (n > 0) {
                 ab.len += (size_t)n;
+                progress = true;
             } else if (n == 0) {
                 a_eof = true;
             } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
@@ -197,6 +230,7 @@ static int pump(int a, int b)
             int n = send(b, ab.buf + ab.off, ab.len - ab.off, 0);
             if (n > 0) {
                 ab.off += (size_t)n;
+                progress = true;
             } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
                 return -1;
             }
@@ -208,6 +242,7 @@ static int pump(int a, int b)
             int n = recv(b, ba.buf + ba.len, RELAY_BUF_SIZE - ba.len, 0);
             if (n > 0) {
                 ba.len += (size_t)n;
+                progress = true;
             } else if (n == 0) {
                 b_eof = true;
             } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
@@ -218,9 +253,14 @@ static int pump(int a, int b)
             int n = send(a, ba.buf + ba.off, ba.len - ba.off, 0);
             if (n > 0) {
                 ba.off += (size_t)n;
+                progress = true;
             } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
                 return -1;
             }
+        }
+
+        if (progress) {
+            last = xTaskGetTickCount();
         }
     }
 }
@@ -233,9 +273,9 @@ static void relay_task(void *arg)
     struct sockaddr_in dst;
     memset(&dst, 0, sizeof(dst));
     dst.sin_family = AF_INET;
-    dst.sin_port   = htons(job->port);
-    if (inet_pton(AF_INET, job->host, &dst.sin_addr) != 1) {
-        ESP_LOGE(TAG, "%s: bad upstream address '%s'", job->name, job->host);
+    dst.sin_port   = htons(job->upstream_port);
+    if (inet_pton(AF_INET, CFG_UPSTREAM_HOST, &dst.sin_addr) != 1) {
+        ESP_LOGE(TAG, "%s: bad upstream address '%s'", job->name, CFG_UPSTREAM_HOST);
         goto done;
     }
 
@@ -244,19 +284,31 @@ static void relay_task(void *arg)
         ESP_LOGE(TAG, "%s: socket() failed: errno %d", job->name, errno);
         goto done;
     }
+
     int one = 1;
     setsockopt(up, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+    setsockopt(up, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
 
-    if (connect_timeout(up, &dst, RELAY_CONNECT_MS) != 0) {
-        ESP_LOGW(TAG, "%s: upstream %s:%u unreachable", job->name, job->host, job->port);
+    /* Source the connection from the Ethernet address. Without this the source
+     * address depends on lwIP's route choice, and the SeaKeeper would be asked
+     * to reply to an address it cannot reach. */
+    if (bind_to(up, CFG_ETH_IP, 0) != 0) {
+        ESP_LOGE(TAG, "%s: cannot bind source %s: errno %d", job->name,
+                 CFG_ETH_IP, errno);
         goto done;
     }
 
-    ESP_LOGI(TAG, "%s: relaying client fd %d -> %s:%u", job->name, job->client_fd,
-             job->host, job->port);
+    if (connect_timeout(up, &dst, RELAY_CONNECT_MS) != 0) {
+        ESP_LOGW(TAG, "%s: upstream " CFG_UPSTREAM_HOST ":%u unreachable",
+                 job->name, job->upstream_port);
+        goto done;
+    }
+
+    ESP_LOGI(TAG, "%s: relaying client fd %d -> " CFG_UPSTREAM_HOST ":%u",
+             job->name, job->client_fd, job->upstream_port);
 
     set_nonblocking(job->client_fd);
-    pump(job->client_fd, up);
+    pump(job->client_fd, up, job->name);
 
 done:
     if (up >= 0) {
@@ -287,17 +339,14 @@ static void listener_task(void *arg)
         int one = 1;
         setsockopt(ls, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
 
-        struct sockaddr_in addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sin_family      = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_ANY);
-        addr.sin_port        = htons(cfg->listen_port);
-
-        if (bind(ls, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-            ESP_LOGE(TAG, "%s: bind port %u failed: errno %d", cfg->name,
-                     cfg->listen_port, errno);
+        /* BoatNetwork only: the Ethernet side must not expose these ports, so
+         * this is deliberately not INADDR_ANY. Expect failures until Wi-Fi is
+         * up, hence a warning and a retry rather than an error. */
+        if (bind_to(ls, CFG_STA_IP, cfg->listen_port) != 0) {
+            ESP_LOGW(TAG, "%s: bind " CFG_STA_IP ":%u failed: errno %d (waiting for Wi-Fi)",
+                     cfg->name, cfg->listen_port, errno);
             close(ls);
-            vTaskDelay(pdMS_TO_TICKS(5000));
+            vTaskDelay(pdMS_TO_TICKS(2000));
             continue;
         }
         if (listen(ls, 4) != 0) {
@@ -307,8 +356,8 @@ static void listener_task(void *arg)
             continue;
         }
 
-        ESP_LOGI(TAG, "%s: listening on port %u -> %s:%u", cfg->name,
-                 cfg->listen_port, cfg->host, cfg->target_port);
+        ESP_LOGI(TAG, "%s: " CFG_STA_IP ":%u -> " CFG_UPSTREAM_HOST ":%u",
+                 cfg->name, cfg->listen_port, cfg->upstream_port);
 
         for (;;) {
             struct sockaddr_in peer;
@@ -335,13 +384,12 @@ static void listener_task(void *arg)
                 xSemaphoreGive(s_slots);
                 continue;
             }
-            job->client_fd   = c;
-            job->upstream_fd = -1;
-            job->port        = cfg->target_port;
-            strlcpy(job->name, cfg->name, sizeof(job->name));
-            strlcpy(job->host, cfg->host, sizeof(job->host));
+            job->client_fd     = c;
+            job->name          = cfg->name;
+            job->upstream_port = cfg->upstream_port;
 
             setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+            setsockopt(c, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
 
             if (xTaskCreate(relay_task, cfg->name, RELAY_TASK_STACK, job,
                             RELAY_TASK_PRIO, NULL) != pdPASS) {
@@ -354,8 +402,7 @@ static void listener_task(void *arg)
     }
 }
 
-esp_err_t relay_start(const char *name, uint16_t listen_port,
-                      const char *target_host, uint16_t target_port)
+esp_err_t relay_start(const char *name, uint16_t listen_port, uint16_t upstream_port)
 {
     if (s_cfg_n >= RELAY_MAX_LISTENERS) {
         return ESP_ERR_NO_MEM;
@@ -368,10 +415,9 @@ esp_err_t relay_start(const char *name, uint16_t listen_port,
     }
 
     listener_cfg_t *cfg = &s_cfg[s_cfg_n];
-    strlcpy(cfg->name, name, sizeof(cfg->name));
-    strlcpy(cfg->host, target_host, sizeof(cfg->host));
-    cfg->listen_port = listen_port;
-    cfg->target_port = target_port;
+    cfg->name          = name;
+    cfg->listen_port   = listen_port;
+    cfg->upstream_port = upstream_port;
 
     if (xTaskCreate(listener_task, name, RELAY_LISTEN_STACK, cfg,
                     RELAY_TASK_PRIO, NULL) != pdPASS) {

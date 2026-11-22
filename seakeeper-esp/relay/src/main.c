@@ -58,12 +58,7 @@ static void wifi_apply_static_ip(void)
         return;
     }
 
-    esp_netif_dns_info_t dns;
-    memset(&dns, 0, sizeof(dns));
-    dns.ip.type = ESP_IPADDR_TYPE_V4;
-    dns.ip.u_addr.ip4.addr = esp_ip4addr_aton(CFG_STA_DNS);
-    esp_netif_set_dns_info(s_sta_netif, ESP_NETIF_DNS_MAIN, &dns);
-
+    /* No DNS: every peer this board talks to is an IP literal. */
     ESP_LOGI(TAG, "wifi static IP %s/%s gw %s", CFG_STA_IP, CFG_STA_NETMASK,
              CFG_STA_GATEWAY);
 }
@@ -102,6 +97,11 @@ static void wifi_init(void)
     strlcpy((char *)wc.sta.ssid, CFG_WIFI_SSID, sizeof(wc.sta.ssid));
     strlcpy((char *)wc.sta.password, CFG_WIFI_PASSWORD, sizeof(wc.sta.password));
     wc.sta.threshold.authmode = wifi_has_password() ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
+
+    if (!wifi_has_password()) {
+        ESP_LOGW(TAG, "CFG_WIFI_PASSWORD is empty: " CFG_WIFI_SSID
+                      " is WPA2, so association will be refused");
+    }
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wc));
@@ -205,9 +205,9 @@ void app_main(void)
     eth_init();
     wifi_init();
 
-    ESP_LOGI(TAG, "starting relays to %s", CFG_UPSTREAM_HOST);
-    ESP_ERROR_CHECK(relay_start("web",  CFG_PORT_WEB,  CFG_UPSTREAM_HOST, 80));
-    ESP_ERROR_CHECK(relay_start("mqtt", CFG_PORT_MQTT, CFG_UPSTREAM_HOST, 9001));
+    ESP_LOGI(TAG, "starting relays to " CFG_UPSTREAM_HOST);
+    ESP_ERROR_CHECK(relay_start("web",  CFG_PORT_WEB,  CFG_PORT_WEB));
+    ESP_ERROR_CHECK(relay_start("mqtt", CFG_PORT_MQTT, CFG_PORT_MQTT));
 
     ESP_LOGI(TAG, "ready: http://%s/  (mqtt ws :%d)", CFG_STA_IP, CFG_PORT_MQTT);
 }
