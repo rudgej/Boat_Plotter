@@ -1349,7 +1349,21 @@ Verify with `candump can0 | grep F211`. A healthy frame decodes as
 `10 27 0C ...` → type 1 (fresh water), instance 0, level 0x0C27 × 0.004 = 12.4%.
 
 Sensor-side settings to match: SSID `BoatNetwork`, host `192.168.10.1`, port `10110`,
-`capacity` 1000, `emptyMv` 0, `fullMv` 3100.
+`capacity` 1000, `emptyMv` 1500, `fullMv` 2426.
+
+The sender is not linear. The firmware (`rudgej/water-level-sensor`) applies a
+6-point piecewise curve: 1500/1625/1835/2078/2303/2426 mV = 0/25/50/80/94.7/100 %.
+The 80 % point is the gauge's 3/4 mark plus one bar; 2303 mV is all 19 bars with
+the full dot off, and 2426 mV lights the dot. A straight line through 1500/2426
+reads 87 % when the gauge shows all bars, so do not revert to two-point scaling.
+
+The pump-dip filter (pressure drops while a tap runs) holds the last good level
+and ends on a recovery plus ~20 s of stability. Settings: `dipFall` 80 mV,
+`dipRise` 60 mV, `dipBand` 25 mV, `dipStable` 20 s.
+
+When flashing the sensor from the N100 over USB, **stop `avnav` and
+`ModemManager` first** — both open `/dev/ttyACM*` and corrupt the write. Restart
+them afterwards. See the sensor README for the full command.
 
 ### 8.9 Gauge zones
 
