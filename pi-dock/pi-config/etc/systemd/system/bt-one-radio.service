@@ -1,0 +1,16 @@
+[Unit]
+Description=Turn off Bluetooth on the Wi-Fi dongle, keeping the internal radio
+Documentation=file:/usr/local/bin/bt-one-radio.sh
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+# BlueZ powers every adapter on at start, so the dongle's Bluetooth comes back
+# after a reboot unless it is switched off again. Its Wi-Fi - the BoatNetwork
+# access point - is not touched by this.
+Type=oneshot
+ExecStart=/usr/local/bin/bt-one-radio.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
