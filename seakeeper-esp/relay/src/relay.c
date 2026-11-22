@@ -182,6 +182,7 @@ int pump(int a, int b, const char *name)
     bool a_eof = false, b_eof = false;
     bool a_wr_shut = false, b_wr_shut = false;
     TickType_t last = xTaskGetTickCount();
+    size_t tot_a2b = 0, tot_b2a = 0;
 
     memset(&ab, 0, sizeof(ab));
     memset(&ba, 0, sizeof(ba));
@@ -200,6 +201,9 @@ int pump(int a, int b, const char *name)
          * read has been written out. Closing on the EOFs alone would truncate
          * a response that arrives just before the upstream closes. */
         if (a_eof && b_eof && ab.len == ab.off && ba.len == ba.off) {
+            ESP_LOGI(TAG, "%s: closed cleanly (client %s, upstream %s, %u/%u bytes)",
+                     name, a_eof ? "FIN" : "open", b_eof ? "FIN" : "open",
+                     (unsigned)tot_a2b, (unsigned)tot_b2a);
             return 0;
         }
 
@@ -255,6 +259,7 @@ int pump(int a, int b, const char *name)
             if (errno == EINTR) {
                 continue;
             }
+            ESP_LOGW(TAG, "%s: select failed (errno %d)", name, errno);
             return -1;
         }
         if (r == 0) {
@@ -274,6 +279,7 @@ int pump(int a, int b, const char *name)
                 int n = recv(a, ab.buf + ab.len, RELAY_BUF_SIZE - ab.len, 0);
                 if (n > 0) {
                     ab.len += (size_t)n;
+                    tot_a2b += (size_t)n;
                     progress = true;
                 } else if (n == 0) {
                     a_eof = true;
@@ -283,6 +289,7 @@ int pump(int a, int b, const char *name)
                 } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
                     break;
                 } else {
+                    ESP_LOGW(TAG, "%s: recv from client failed (errno %d)", name, errno);
                     return -1;
                 }
             }
@@ -298,6 +305,7 @@ int pump(int a, int b, const char *name)
                 } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                     break;
                 } else {
+                    ESP_LOGW(TAG, "%s: send to upstream failed (errno %d)", name, errno);
                     return -1;
                 }
             }
@@ -310,6 +318,7 @@ int pump(int a, int b, const char *name)
                 int n = recv(b, ba.buf + ba.len, RELAY_BUF_SIZE - ba.len, 0);
                 if (n > 0) {
                     ba.len += (size_t)n;
+                    tot_b2a += (size_t)n;
                     progress = true;
                 } else if (n == 0) {
                     b_eof = true;
@@ -319,6 +328,7 @@ int pump(int a, int b, const char *name)
                 } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
                     break;
                 } else {
+                    ESP_LOGW(TAG, "%s: recv from upstream failed (errno %d)", name, errno);
                     return -1;
                 }
             }
@@ -334,6 +344,7 @@ int pump(int a, int b, const char *name)
                 } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
                     break;
                 } else {
+                    ESP_LOGW(TAG, "%s: send to client failed (errno %d)", name, errno);
                     return -1;
                 }
             }
