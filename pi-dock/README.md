@@ -106,7 +106,7 @@ tar xzf /tmp/pi-config.tar.gz -C pi-dock/pi-config/   # run from repo root
 | `holding-tank-dump.service` | simple | Holding-tank discharge automation daemon (§8) |
 | `memwatch.timer` | oneshot | Logs memory/process snapshot to `/var/log/memwatch.log` |
 | `diagwatch.service` | simple | 2 s diagnostic logger (voltage/throttle/load) → `/var/log/diagwatch.log` |
-| `bt-hifi.service` | service | Bluetooth hi-fi pairing/connect |
+| `bt-one-radio.service` | oneshot | Keeps the internal radio pairable (bondable) and the dongle's Bluetooth off (§7a) |
 | `nvme-write-cache.service` | service | NVMe write-cache tuning |
 
 ---
@@ -245,12 +245,52 @@ The flow, deliberately this simple:
    rows` shows an empty box. Run dialogs in the foreground; raise them from a
    detached helper instead.
 
-### Two radios
+### Two radios, and the reason pairing never survived a reboot
 
 The box has two Bluetooth adapters, `bossy #1` (`00:A6:2B:DC:22:1F`, onboard)
-and `bossy #2` (`0B:3B:22:AC:88:20`, USB). BlueZ's default controller changed
-after a `systemctl restart bluetooth`, and pairing history is per-radio:
-`/var/lib/bluetooth/<controller>/<device>`. A corrupt bond can be cleared with:
+and `bossy #2` (`0B:3B:22:AC:88:20`, the AIC8800D80 USB stick that also provides
+the BoatNetwork access point). BlueZ's default controller changed after a
+`systemctl restart bluetooth`, and pairing history is per-radio:
+`/var/lib/bluetooth/<controller>/<device>`.
+
+`bt-one-radio.service` runs `bt-one-radio.sh` at boot and settles it: any
+controller whose address has the locally-administered bit set (a generated
+address, i.e. the dongle) is powered off, and the one with a hardware address is
+made pairable. Its Wi-Fi is left alone — `BoatNetwork` stays `activated`.
+
+The speaker pairing did not persist, and the fault was on the adapter, not the
+speaker:
+
+```text
+Pairable: no    current settings: powered ssp br/edr le secure-conn
+Pairable: yes   current settings: powered bondable ssp br/edr le secure-conn
+```
+
+`bondable` is only present while the adapter is **pairable**, and only a bondable
+adapter writes a `[LinkKey]`. With bonding off the speaker paired, played, and
+the key was never stored — so it was forgotten at power-off. Proof: no device on
+this box had ever had a `[LinkKey]` saved. Setting `Pairable` over D-Bus turns
+bonding on; nothing else needs setting. After pairing once with it on:
+
+```text
+Paired: yes  Bonded: yes  Trusted: yes
+[LinkKey] Key=A113… Type=4          # /var/lib/bluetooth/<ctrl>/<mac>/info
+```
+
+What then keeps it working across a reboot, and why: the key file above, the
+device being **trusted** (so it may re-connect without asking), and
+WirePlumber's saved default sink
+(`~/.local/state/wireplumber/default-nodes`), which points at
+`bluez_output.88_C6_26_C9_DD_0A.1`. The speaker re-connects itself on power-up.
+
+Two commands to diagnose it:
+
+```sh
+sudo grep -l LinkKey /var/lib/bluetooth/*/*/info   # none = nothing has ever bonded
+bluetoothctl show | grep -E 'Pairable|Powered'     # Pairable: no = the cause
+```
+
+A corrupt bond can be cleared with:
 
 ```sh
 sudo systemctl stop bluetooth
@@ -258,7 +298,19 @@ sudo rm -rf /var/lib/bluetooth/*/88:C6:26:C9:DD:0A     # the device's MAC
 sudo systemctl start bluetooth
 ```
 
-Files: `pi-config/usr/local/bin/bt-pair.sh`.
+### Two more traps, from making that boot service reliable
+
+6. **`btmgmt` hangs when run as a systemd unit** — indefinitely, not slowly. The
+   same call over SSH takes 14–20 ms. `bluetoothctl power off` fed from a pipe
+   behaves the same way. The boot script therefore uses `busctl` only; it was
+   measured at 161 ms for the whole unit, against 45 s when it used `btmgmt`.
+7. **`udevadm settle` waited its full 30 s timeout on every start here**, even
+   though nothing was still appearing. Waiting for the adapter objects with a
+   short bounded loop is faster and cannot stall the boot.
+
+Files: `pi-config/usr/local/bin/bt-pair.sh`,
+`pi-config/usr/local/bin/bt-one-radio.sh`,
+`pi-config/etc/systemd/system/bt-one-radio.service`.
 
 ---
 

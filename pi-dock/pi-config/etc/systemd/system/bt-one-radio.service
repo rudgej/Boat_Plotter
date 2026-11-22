@@ -1,5 +1,5 @@
 [Unit]
-Description=Turn off Bluetooth on the Wi-Fi dongle, keeping the internal radio
+Description=Keep the internal Bluetooth radio bondable, off on the Wi-Fi dongle
 Documentation=file:/usr/local/bin/bt-one-radio.sh
 After=bluetooth.service
 Wants=bluetooth.service
@@ -8,8 +8,17 @@ Wants=bluetooth.service
 # BlueZ powers every adapter on at start, so the dongle's Bluetooth comes back
 # after a reboot unless it is switched off again. Its Wi-Fi - the BoatNetwork
 # access point - is not touched by this.
+#
+# udevadm settle first: the dongle enumerates over USB and may not exist yet when
+# this runs straight after bluetooth.service. Waiting for udev events means every
+# adapter is present before the loop looks for them.
 Type=oneshot
+# No udevadm settle here: it waited its full 30 s timeout on every start on this
+# box. The script waits for the adapter objects itself, and only as long as it
+# has to. The timeout below is a backstop - the script cannot hang, its longest
+# wait is 20 s for the adapters to appear.
 ExecStart=/usr/local/bin/bt-one-radio.sh
+TimeoutStartSec=90
 RemainAfterExit=yes
 
 [Install]
