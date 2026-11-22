@@ -126,4 +126,38 @@ Installed as `n100/seakeeper-redirect.service` (idempotent, enabled at boot).
 Verified: two WebSocket connections, the display client receiving 103,409
 bytes of status.
 
+## In service — final numbers
+
+| Check | Result |
+|---|---|
+| Page load through the relay | **0.22 s** for 45,851 bytes (~205 KB/s) |
+| Page MQTT connections | 2 (hosting + displaying) |
+| Status received by the display client | 161,335 bytes and climbing |
+| Redirect service | `enabled`, `active` |
+
+The drain-per-wake and 2 KB buffer change took page load from ~1.0 s to
+0.22 s. Before that change the pump moved one 1 KB buffer per `select()`, so
+throughput was one buffer per Wi-Fi round trip (~45 KB/s measured against a
+15.5 ms average RTT).
+
+### The "lost connection" was physical
+
+Twice during commissioning the page lost everything at once. Each time the
+board was unreachable on Wi-Fi as well (100% ping loss) and the RJ45 LEDs were
+dark, and once back up the relay failed in 39 ms rather than 5 s — an instant
+failure means the Ethernet link itself is down, where a 5 s failure means the
+link is up but the unit is silent.
+
+Use that as the first diagnostic:
+
+| Relay failure | Meaning |
+|---|---|
+| **~39 ms, 000** | Ethernet link down — cable, socket, or unit off |
+| **~5 s, 000** | link up, unit not answering |
+| **200** | working |
+
+The board losing power entirely is still the leading suspect, and the buck
+converter feeding it has now done this twice.
+
+
 
