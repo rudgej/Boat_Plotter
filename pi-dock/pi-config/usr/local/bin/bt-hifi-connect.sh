@@ -17,11 +17,13 @@ MAC=$(tr -d '[:space:]' < /etc/boat-hifi-mac 2>/dev/null)
 [ -n "$CTRL" ] || { echo "no bluetooth adapter"; exit 1; }
 [ -n "$MAC" ] || { echo "no /etc/boat-hifi-mac"; exit 0; }
 
+# --check: report whether the speaker is currently a sink, without touching the
+# connection or the default. BlueZ keeps saying "Connected: yes" for a while
+# after a speaker is switched off, so this is the only trustworthy liveness test.
+CHECK_ONLY=0
+[ "${1:-}" = "--check" ] && CHECK_ONLY=1
+
 bluetoothctl power on >/dev/null 2>&1
-bluetoothctl --timeout 5 trust "$MAC" >/dev/null 2>&1
-# Skip the connect when the link is already up; it blocks for the whole timeout.
-bluetoothctl info "$MAC" 2>/dev/null | grep -qi 'Connected: yes' ||
-    bluetoothctl --timeout 15 connect "$MAC" >/dev/null 2>&1 || true
 
 # Find the Audio/Sink that belongs to this address. pw-dump is used because
 # wpctl's text output does not tie a sink to its device, and pactl is not
@@ -44,6 +46,21 @@ for o in objs:
         break
 ' "$MAC"
 }
+
+if [ "$CHECK_ONLY" = 1 ]; then
+    ID=$(sink_id)
+    if [ -n "$ID" ]; then
+        echo "present (sink $ID)"
+        exit 0
+    fi
+    echo "absent"
+    exit 1
+fi
+
+bluetoothctl --timeout 5 trust "$MAC" >/dev/null 2>&1
+# Skip the connect when the link is already up; it blocks for the whole timeout.
+bluetoothctl info "$MAC" 2>/dev/null | grep -qi 'Connected: yes' ||
+    bluetoothctl --timeout 15 connect "$MAC" >/dev/null 2>&1 || true
 
 for _ in $(seq 1 20); do
     ID=$(sink_id)

@@ -76,13 +76,33 @@ name_of() { info_of "$1" | sed -n 's/^[[:space:]]*Name: //p' | head -1; }
 connect_saved() {
     local mac="$1" name
     name=$(name_of "$mac")
-    if is_connected "$mac"; then
-        say "Already connected to ${name:-$mac}."
-    else
-        say "Connecting to ${name:-$mac}..."
-        bluetoothctl --timeout 20 connect "$mac" >/dev/null 2>&1 || true
+
+    # BlueZ goes on reporting "Connected: yes" for a while after a speaker is
+    # switched off, so that flag alone told the user "already connected" to a
+    # speaker that was in a drawer. The only trustworthy test is whether audio
+    # is actually being offered, so stale links are dropped and rebuilt.
+    if is_connected "$mac" && ! /usr/local/bin/bt-hifi-connect.sh --check >/dev/null 2>&1; then
+        bluetoothctl --timeout 10 disconnect "$mac" >/dev/null 2>&1
+        sleep 1
     fi
-    /usr/local/bin/bt-hifi-connect.sh
+
+    say "Connecting to ${name:-$mac}..."
+
+    if /usr/local/bin/bt-hifi-connect.sh; then
+        say "Connected to ${name:-$mac}.
+Music will play on it."
+        return 0
+    fi
+
+    # Nothing came up. Either the speaker is off, or the user wants a different
+    # one - ask, rather than leaving them stuck with no way forward.
+    if confirm "${name:-$mac} is not responding.
+
+Look for a different speaker instead?"; then
+        pair_new
+        return $?
+    fi
+    return 1
 }
 
 # Scan, confirm, pair, remember.
