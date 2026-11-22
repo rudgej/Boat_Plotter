@@ -46,7 +46,7 @@ Everything adjustable is in `main/board_config.h`:
 
 ### Credentials without committing them
 
-Create `main/secrets.h` (git-ignored) and it is picked up automatically:
+Create `src/secrets.h` (git-ignored) and it is picked up automatically:
 
 ```c
 #pragma once
@@ -56,7 +56,7 @@ Create `main/secrets.h` (git-ignored) and it is picked up automatically:
 Alternatively override at build time without editing anything:
 
 ```sh
-idf.py -DCFG_WIFI_PASSWORD='"the-real-password"' build
+pio run -DCFG_WIFI_PASSWORD='"the-real-password"'
 ```
 
 No source change is needed to rotate the password - rebuild and reflash.
@@ -76,23 +76,27 @@ supply. There is no reset line; the PHY is brought up by software.
 
 ## Build and flash
 
-Requires ESP-IDF v5.x.
+PlatformIO project, same workflow as the other ESP32 nodes:
 
 ```sh
 cd seakeeper-esp/relay
-idf.py set-target esp32
-idf.py build
-idf.py -p /dev/tty.usbserial-XXXX flash monitor
+pio run                     # build
+pio run -t upload           # flash (auto-detects the USB serial adapter)
+pio device monitor          # 115200 serial log
 ```
+
+`platform = espressif32@6.12.0` is pinned, so the toolchain (ESP-IDF 5.5.0) is
+downloaded once and then fixed - a platform update cannot silently change this
+build. No system-wide `idf.py` install is needed.
 
 Flashing on this unit is done through hand-held pogo pins, so verify as much as
 possible before each cycle:
 
-1. Check the build log for warnings - they are cheap, reflashing is not.
-2. Prefer running `idf.py monitor` after the flash to read the bring-up log in
-   the same pass.
+1. Build locally first - the compiler catches what a stub type check cannot.
+2. `pio device monitor` straight after the flash reads the bring-up log in the
+   same pass; the board must be powered from 5 V and IO0 released before reset.
 
-Serial port on macOS: `ls /dev/tty.usb*`.
+Serial port on macOS: `ls /dev/cu.usb*`.
 
 ## Expected log
 

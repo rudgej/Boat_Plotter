@@ -1,0 +1,10 @@
+# Partition table for the SeaKeeper relay (4 MB flash).
+#
+# The default single-app table gives only 1 MB to the app, which this firmware
+# fills to 73%. A 3 MB app partition leaves room for later additions without
+# needing another partition change (and another pogo-pin flash).
+#
+# Name,     Type, SubType, Offset,   Size,     Flags
+nvs,        data, nvs,     0x9000,   0x6000,
+phy_init,   data, phy,     0xf000,   0x1000,
+factory,    app,  factory, 0x10000,  0x300000,

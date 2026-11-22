@@ -155,7 +155,8 @@ static void eth_init(void)
     uint8_t eth_mac[6] = { 0x02, 0x00, 0x5e, 0x10, 0x00, 0x01 };
     esp_eth_ioctl(eth_handle, ETH_CMD_S_MAC_ADDR, eth_mac);
 
-    s_eth_netif = esp_netif_new(ESP_NETIF_DEFAULT_ETH());
+    esp_netif_config_t netif_cfg = ESP_NETIF_DEFAULT_ETH();
+    s_eth_netif = esp_netif_new(&netif_cfg);
     esp_eth_netif_glue_handle_t glue = esp_eth_new_netif_glue(eth_handle);
     if (s_eth_netif == NULL || glue == NULL) {
         ESP_LOGE(TAG, "ethernet netif creation failed");
