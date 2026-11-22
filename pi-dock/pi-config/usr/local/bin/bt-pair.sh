@@ -185,11 +185,23 @@ rm -f "$ROWS"
 
 # --- 5. pair, connect, route the audio -----------------------------------
 start_progress "Connecting to $CHOSEN..."
-cmd --timeout 20 pair "$TARGET" >/dev/null
-cmd --timeout 8 trust "$TARGET" >/dev/null
-cmd --timeout 12 connect "$TARGET" >/dev/null
 
-# Say so if the pairing did not take, instead of reporting success regardless.
+# "bluetoothctl --timeout N" blocks for the full N seconds even when the
+# command succeeds (measured: --timeout 10 takes 10,030 ms, without it 17 ms).
+# Written as pair --timeout 20 then trust --timeout 8 then connect, that left a
+# 28-second gap between pairing and connecting - and in that gap the speaker
+# leaves pairing mode and refuses the connection, so it only ever connected if
+# you put it back into pairing mode by hand.
+#
+# Instead: start pairing, wait only until the bond actually exists, then connect
+# straight away.
+timeout 25 bluetoothctl pair "$TARGET" >/dev/null 2>&1 &
+for _ in $(seq 1 25); do
+    q info "$TARGET" | grep -qi 'Paired: yes' && break
+    sleep 1
+done
+timeout 10 bluetoothctl trust "$TARGET" >/dev/null 2>&1
+
 if ! q info "$TARGET" | grep -qi 'Paired: yes'; then
     stop_progress
     show --info --title="$TITLE" --width=460 --ok-label="Close" \
@@ -199,12 +211,14 @@ Put it into pairing mode and press Bluetooth again." 2>/dev/null
     exit 1
 fi
 
-# The audio output does not exist the instant connect returns: A2DP is still
+timeout 20 bluetoothctl connect "$TARGET" >/dev/null 2>&1 &
+
+# The audio output does not exist the instant connect is issued: A2DP is still
 # negotiating. Checking once immediately is why a working speaker was reported
-# as "has not offered an audio output" and then started playing 30 s later.
+# as "has not offered an audio output" and then started playing later.
 MAC_U=$(printf '%s' "$TARGET" | tr 'a-z' 'A-Z' | tr ':' '_')
 IDX=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for _ in $(seq 1 15); do
     IDX=$(pactl list short sinks 2>/dev/null |
         awk -v m="$MAC_U" '{ n = toupper($2); if (index(n, m)) { print $1; exit } }')
     [ -n "$IDX" ] && break
