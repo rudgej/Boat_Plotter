@@ -29,7 +29,6 @@
 
 static const char *TAG = "relay";
 
-#define RELAY_MAX_CONNS      6
 #define RELAY_BUF_SIZE       1024   /* per direction, per connection */
 #define RELAY_CONNECT_MS     5000   /* upstream connect timeout */
 #define RELAY_IDLE_MS        600000 /* drop a connection with no traffic at all */
@@ -42,17 +41,19 @@ typedef struct {
     int      client_fd;
     const char *name;           /* points into s_cfg, which is static */
     uint16_t upstream_port;
+    SemaphoreHandle_t slots;    /* this listener's own counter */
 } relay_job_t;
 
 typedef struct {
-    const char *name;
-    uint16_t listen_port;
-    uint16_t upstream_port;
+    const char       *name;
+    uint16_t          listen_port;
+    uint16_t          upstream_port;
+    uint8_t           max_conns;
+    SemaphoreHandle_t slots;
 } listener_cfg_t;
 
-static listener_cfg_t    s_cfg[RELAY_MAX_LISTENERS];
-static int               s_cfg_n = 0;
-static SemaphoreHandle_t s_slots = NULL;
+static listener_cfg_t s_cfg[RELAY_MAX_LISTENERS];
+static int            s_cfg_n = 0;
 
 static void set_nonblocking(int fd)
 {
@@ -154,7 +155,7 @@ static int pump(int a, int b, const char *name)
         }
 
         /* Without this, a peer that opens a connection and then goes quiet
-         * holds one of the RELAY_MAX_CONNS slots until reboot. */
+         * holds one of this listener's slots until reboot. */
         if ((TickType_t)(xTaskGetTickCount() - last) > pdMS_TO_TICKS(RELAY_IDLE_MS)) {
             ESP_LOGW(TAG, "%s: idle for %d ms, closing", name, RELAY_IDLE_MS);
             return -1;
@@ -317,8 +318,8 @@ done:
     if (job->client_fd >= 0) {
         close(job->client_fd);
     }
-    if (s_slots) {
-        xSemaphoreGive(s_slots);
+    if (job->slots != NULL) {
+        xSemaphoreGive(job->slots);
     }
     free(job);
     vTaskDelete(NULL);
@@ -372,8 +373,9 @@ static void listener_task(void *arg)
                 continue;
             }
 
-            if (xSemaphoreTake(s_slots, 0) != pdTRUE) {
-                ESP_LOGW(TAG, "%s: connection limit reached, refusing", cfg->name);
+            if (xSemaphoreTake(cfg->slots, 0) != pdTRUE) {
+                ESP_LOGW(TAG, "%s: all %u slots in use, refusing", cfg->name,
+                         cfg->max_conns);
                 close(c);
                 continue;
             }
@@ -381,12 +383,13 @@ static void listener_task(void *arg)
             relay_job_t *job = calloc(1, sizeof(*job));
             if (job == NULL) {
                 close(c);
-                xSemaphoreGive(s_slots);
+                xSemaphoreGive(cfg->slots);
                 continue;
             }
             job->client_fd     = c;
             job->name          = cfg->name;
             job->upstream_port = cfg->upstream_port;
+            job->slots         = cfg->slots;
 
             setsockopt(c, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
             setsockopt(c, SOL_SOCKET, SO_KEEPALIVE, &one, sizeof(one));
@@ -395,32 +398,35 @@ static void listener_task(void *arg)
                             RELAY_TASK_PRIO, NULL) != pdPASS) {
                 ESP_LOGE(TAG, "%s: out of tasks", cfg->name);
                 close(c);
-                xSemaphoreGive(s_slots);
+                xSemaphoreGive(cfg->slots);
                 free(job);
             }
         }
     }
 }
 
-esp_err_t relay_start(const char *name, uint16_t listen_port, uint16_t upstream_port)
+esp_err_t relay_start(const char *name, uint16_t listen_port, uint16_t upstream_port,
+                      uint8_t max_conns)
 {
-    if (s_cfg_n >= RELAY_MAX_LISTENERS) {
+    if (s_cfg_n >= RELAY_MAX_LISTENERS || max_conns == 0) {
         return ESP_ERR_NO_MEM;
-    }
-    if (s_slots == NULL) {
-        s_slots = xSemaphoreCreateCounting(RELAY_MAX_CONNS, RELAY_MAX_CONNS);
-        if (s_slots == NULL) {
-            return ESP_ERR_NO_MEM;
-        }
     }
 
     listener_cfg_t *cfg = &s_cfg[s_cfg_n];
+    cfg->slots = xSemaphoreCreateCounting(max_conns, max_conns);
+    if (cfg->slots == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
     cfg->name          = name;
     cfg->listen_port   = listen_port;
     cfg->upstream_port = upstream_port;
+    cfg->max_conns     = max_conns;
 
     if (xTaskCreate(listener_task, name, RELAY_LISTEN_STACK, cfg,
                     RELAY_TASK_PRIO, NULL) != pdPASS) {
+        vSemaphoreDelete(cfg->slots);
+        cfg->slots = NULL;
         return ESP_ERR_NO_MEM;
     }
     s_cfg_n++;

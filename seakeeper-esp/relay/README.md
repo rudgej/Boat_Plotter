@@ -60,7 +60,14 @@ The board is deliberately closed in both directions:
 - Upstream sockets are bound to `192.168.0.254` before connecting, so the unit
   always sees a source address in its own `/24` and can reply without a gateway.
 - A connection with no traffic in either direction for 10 minutes is dropped,
-  so a stalled client cannot hold one of the six relay slots until reboot.
+  so a stalled client cannot hold a slot until reboot.
+- Slots are counted per port - 4 for the web UI, 2 for MQTT - so a page that
+  opens several sockets cannot lock live data out. That is 12 sockets plus the
+  two listeners, inside `CONFIG_LWIP_MAX_SOCKETS=16`.
+- Wi-Fi power save is off (`WIFI_PS_NONE`): modem sleep adds latency and can
+  drop inbound frames, which is wrong for a bridge.
+- If Ethernet fails to initialise the board logs it and restarts after 5 s,
+  rather than starting listeners that could never relay anything.
 
 ## Wiring (WT32-ETH01)
 

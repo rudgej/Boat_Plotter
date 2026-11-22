@@ -35,6 +35,13 @@
 #define CFG_PORT_WEB        80
 #define CFG_PORT_MQTT       9001
 
+/* Connection slots, kept separate rather than shared: the page can open several
+ * sockets, and one busy browser must not be able to take the single MQTT slot
+ * and kill live data. 4 + 2 = 6 connections = 12 sockets, plus 2 listeners,
+ * which fits CONFIG_LWIP_MAX_SOCKETS=16. */
+#define CFG_WEB_MAX_CONNS   4
+#define CFG_MQTT_MAX_CONNS  2
+
 /* ---------------- WT32-ETH01 wiring ---------------- */
 
 /* LAN8720 PHY on the internal RMII bus; 50 MHz clock fed into GPIO0. GPIO16 is

@@ -18,6 +18,8 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
+#include "esp_timer.h"
+#include "esp_system.h"
 #include "esp_eth.h"
 #include "esp_eth_mac_esp.h"        /* ETH_ESP32_EMAC_DEFAULT_CONFIG, EMAC_CLK_EXT_IN */
 #include "esp_eth_phy.h"
@@ -32,6 +34,14 @@ static const char *TAG = "app";
 
 static esp_netif_t *s_sta_netif = NULL;
 static esp_netif_t *s_eth_netif = NULL;
+static esp_timer_handle_t s_reconnect_timer = NULL;
+
+/* Retry runs in the esp_timer task, not in the event handler. Blocking the
+ * default event loop here would also delay Ethernet link events. */
+static void wifi_reconnect_cb(void *arg)
+{
+    esp_wifi_connect();
+}
 
 /* ------------------------------------------------------------------ */
 /* Wi-Fi station                                                       */
@@ -70,11 +80,20 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t *d = (wifi_event_sta_disconnected_t *)data;
-        ESP_LOGW(TAG, "wifi disconnected (reason %d), retrying", d ? d->reason : -1);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        esp_wifi_connect();
+        ESP_LOGW(TAG, "wifi disconnected (reason %d), retrying in 1 s",
+                 d ? d->reason : -1);
+
+        /* Several disconnect events can arrive together; arming an already
+         * armed one-shot returns ESP_ERR_INVALID_STATE, which is harmless. */
+        if (s_reconnect_timer == NULL ||
+            esp_timer_start_once(s_reconnect_timer, 1000 * 1000) != ESP_OK) {
+            esp_wifi_connect();
+        }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
+        if (s_reconnect_timer != NULL) {
+            esp_timer_stop(s_reconnect_timer);
+        }
         ESP_LOGI(TAG, "wifi up: " IPSTR, IP2STR(&e->ip_info.ip));
     }
 }
@@ -86,6 +105,12 @@ static void wifi_init(void)
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+    const esp_timer_create_args_t timer_args = {
+        .callback = &wifi_reconnect_cb,
+        .name     = "wifi-retry",
+    };
+    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &s_reconnect_timer));
 
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
                                                &wifi_event_handler, NULL));
@@ -105,6 +130,12 @@ static void wifi_init(void)
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wc));
+
+    /* Modem sleep adds tens to hundreds of milliseconds of latency and can drop
+     * inbound frames. This board is a bridge, not a battery sensor, so it stays
+     * awake. */
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+
     ESP_ERROR_CHECK(esp_wifi_start());
 
     ESP_LOGI(TAG, "wifi started, joining \"%s\"", CFG_WIFI_SSID);
@@ -114,7 +145,7 @@ static void wifi_init(void)
 /* Ethernet (WT32-ETH01, LAN8720)                                      */
 /* ------------------------------------------------------------------ */
 
-static void eth_init(void)
+static esp_err_t eth_init(void)
 {
     /* PHY power enable on this board. */
     gpio_config_t io;
@@ -140,7 +171,7 @@ static void eth_init(void)
     esp_eth_phy_t *phy = esp_eth_phy_new_lan87xx(&phy_config);
     if (mac == NULL || phy == NULL) {
         ESP_LOGE(TAG, "ethernet MAC/PHY creation failed");
-        return;
+        return ESP_FAIL;
     }
 
     esp_eth_config_t eth_config = ETH_DEFAULT_CONFIG(mac, phy);
@@ -148,7 +179,7 @@ static void eth_init(void)
     esp_err_t err = esp_eth_driver_install(&eth_config, &eth_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_eth_driver_install: %s", esp_err_to_name(err));
-        return;
+        return err;
     }
 
     /* Fixed MAC so the DHCP server and ARP tables stay stable across reboots. */
@@ -160,7 +191,7 @@ static void eth_init(void)
     esp_eth_netif_glue_handle_t glue = esp_eth_new_netif_glue(eth_handle);
     if (s_eth_netif == NULL || glue == NULL) {
         ESP_LOGE(TAG, "ethernet netif creation failed");
-        return;
+        return ESP_FAIL;
     }
     esp_netif_attach(s_eth_netif, glue);
 
@@ -176,14 +207,16 @@ static void eth_init(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "ethernet static IP %s failed: %s", CFG_ETH_IP,
                  esp_err_to_name(err));
-    } else {
-        ESP_LOGI(TAG, "ethernet static IP %s/%s", CFG_ETH_IP, CFG_ETH_NETMASK);
+        return err;
     }
+    ESP_LOGI(TAG, "ethernet static IP %s/%s", CFG_ETH_IP, CFG_ETH_NETMASK);
 
     err = esp_eth_start(eth_handle);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "esp_eth_start: %s", esp_err_to_name(err));
+        return err;
     }
+    return ESP_OK;
 }
 
 /* ------------------------------------------------------------------ */
@@ -202,12 +235,22 @@ void app_main(void)
 
     /* Ethernet first so the downlink address exists before the first client
      * arrives over Wi-Fi. Neither init blocks on link. */
-    eth_init();
+    err = eth_init();
+    if (err != ESP_OK) {
+        /* Without the downlink there is nothing to relay, and every connection
+         * would fail silently at the client. Restart rather than sit dead. */
+        ESP_LOGE(TAG, "ethernet init failed (%s) - restarting in 5 s",
+                 esp_err_to_name(err));
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        esp_restart();
+    }
     wifi_init();
 
     ESP_LOGI(TAG, "starting relays to " CFG_UPSTREAM_HOST);
-    ESP_ERROR_CHECK(relay_start("web",  CFG_PORT_WEB,  CFG_PORT_WEB));
-    ESP_ERROR_CHECK(relay_start("mqtt", CFG_PORT_MQTT, CFG_PORT_MQTT));
+    ESP_ERROR_CHECK(relay_start("web",  CFG_PORT_WEB,  CFG_PORT_WEB,
+                                CFG_WEB_MAX_CONNS));
+    ESP_ERROR_CHECK(relay_start("mqtt", CFG_PORT_MQTT, CFG_PORT_MQTT,
+                                CFG_MQTT_MAX_CONNS));
 
     ESP_LOGI(TAG, "ready: http://%s/  (mqtt ws :%d)", CFG_STA_IP, CFG_PORT_MQTT);
 }
