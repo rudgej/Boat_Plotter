@@ -1,0 +1,9 @@
+{
+  "name": "seakeeper-signalk",
+  "version": "1.0.0",
+  "description": "Publishes SeaKeeper gyro status into Signal K at 1 Hz over a single MQTT connection",
+  "main": "index.js",
+  "keywords": ["signalk-node-server-plugin"],
+  "signalk-plugin-enabled-by-default": false,
+  "license": "MIT"
+}

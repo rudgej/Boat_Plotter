@@ -158,9 +158,16 @@ its own.
 - **`seakeeper-esp/`** — flashing kit for the Seakeeper bridge: a WT32-ETH01
   running [martin-ger/esp32_ethernet_router](https://github.com/martin-ger/esp32_ethernet_router)
   **unmodified**. `SETUP.md` has the wiring and configuration; `flash.sh` and the
-  prebuilt binaries are here. There is no bespoke firmware — see
-  [seakeeper-bridge](https://github.com/rudgej/seakeeper-bridge) for what the
-  bridge does and why it has no source of its own.
+  prebuilt binaries are here. That router firmware turned out to be the wrong
+  tool — see below.
+- **`seakeeper-signalk/`** — Signal K plugin that reads the gyro over MQTT and publishes roll,
+  on/off, stabilise-available, stabilising, target rpm, actual rpm and an alarm flag at 1 Hz,
+  using a single MQTT connection. See its `README.md` for the path mapping.
+  The bridge firmware itself now lives in
+  [esp-seakeeper-relay](https://github.com/rudgej/esp-seakeeper-relay) — PlatformIO/ESP-IDF,
+  replaces the off-the-shelf router because that did destination-only NAT and left the unit
+  ARPing a host that was never reachable. The protocol is documented there in
+  `docs/seakeeper-protocol.md`.
 - **`pi-dock/pi-config/home/pi/.signalk/settings.json`** — Signal K's own config (data connections
   and security). Without this a restored Signal K has no data connections at all.
 - **`shelly-migration-baseline.md`** — Shelly switch migration notes.
