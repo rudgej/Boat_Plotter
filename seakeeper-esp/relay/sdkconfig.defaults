@@ -7,9 +7,11 @@ CONFIG_IDF_TARGET="esp32"
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 
-# Two listeners plus several simultaneous connections (web page opens a handful
-# of sockets, plus the MQTT WebSocket).
-CONFIG_LWIP_MAX_SOCKETS=16
+# Each relayed connection uses two sockets (client + upstream), and the web
+# listener allows 6 at once because that is the browser per-host cap. 8
+# connections = 16 sockets, plus 2 listeners = 18, so keep both pools at 20.
+CONFIG_LWIP_MAX_SOCKETS=20
+CONFIG_LWIP_MAX_ACTIVE_TCP=20
 
 # Networking hardware.
 CONFIG_ESP_WIFI_ENABLED=y
