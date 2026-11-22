@@ -20,7 +20,7 @@ All of these work from anywhere over Tailscale, and from the boat Wi-Fi without 
 | Manuals (PDFs) | `http://bossy:8081` |
 | o-charts manager | `http://bossy:8083/static/index.html` — **LAN only, see Known gaps** |
 | Shell | `ssh pi@bossy` |
-| Seakeeper UI | `http://192.168.0.2/` — DNAT'd to the ESP32 relay bridge by `seakeeper-redirect.service`; see `seakeeper-esp/relay/README.md` |
+| Seakeeper UI | `http://192.168.0.2/` — DNAT'd to the ESP32 relay bridge by `seakeeper-redirect.service`; firmware lives in [esp-seakeeper-relay](https://github.com/rudgej/esp-seakeeper-relay) |
 
 **Signal K security is on.** Reads are open; writes need a login. The user is `boat`; the password
 is *not* in this repo — it lives in `/etc/signalk-automation.env` on the box, which is also what the

@@ -5,10 +5,11 @@
 > address only: the SeaKeeper replies to an address it has no route to and the
 > link never completes (proven by packet capture, see `seakeeper-link.md`).
 >
-> The bridge now runs firmware from this repository instead —
-> [`relay/`](relay/) — which is a plain TCP relay on ports 80 and 9001. Build
-> and flash instructions are in [`relay/README.md`](relay/README.md). The
-> wiring in §1 below still applies: same board, same pogo-pin harness.
+> The bridge now runs firmware from its own repository instead —
+> [`esp-seakeeper-relay`](https://github.com/rudgej/esp-seakeeper-relay) — which
+> is a plain TCP relay on ports 80 and 9001, with the SeaKeeper protocol
+> documented in that repository's `docs/seakeeper-protocol.md`. The wiring in §1
+> below still applies: same board, same pogo-pin harness.
 
 The Seakeeper 5" display has an Ethernet socket but no Wi-Fi. A **WT32-ETH01
 V1.4** (ESP32 + LAN8720 Ethernet) is flashed with
