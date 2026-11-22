@@ -58,3 +58,31 @@ The launcher still points at `http://192.168.0.2/`, which is the *direct-cable*
 topology from commit `4aa0074`. With the relay bridge the dock must load
 `http://192.168.10.50/` instead, or the WebSocket host resolves to an address
 the N100 cannot reach.
+
+The repo copy is corrected; on the box the override file was set instead, which
+the launcher already honours:
+
+```sh
+echo http://192.168.10.50/ > ~/.config/seakeeper-url
+```
+
+## End-to-end through the relay, verified
+
+Measured from the N100 against `192.168.10.50` with the unit on the bridge:
+
+| Check | Result |
+|---|---|
+| `GET /` | 200, **45,851 bytes** — byte-identical to direct |
+| `GET /assets/js/d3.v3.min.js` | 200, 151,143 bytes |
+| `GET /garmin/config.json` | 200, 156 bytes |
+| WebSocket upgrade on 9001 | `101 Switching Protocols` |
+| MQTT CONNECT | `20 02 00 00` (accepted) |
+| MQTT PINGREQ | `d0 00` |
+| Status stream | continuous 808-byte PUBLISH frames (~5/s) |
+
+One defect was found and fixed during this test: the relay stalled after
+exactly one buffer (1024 bytes) on any larger response, because the pump's
+read condition excluded a buffer that was full but fully sent. See the
+`pump()` comment in `seakeeper-esp/relay/src/relay.c` and
+`seakeeper-esp/relay/tools/pump_test.c`, which reproduces it on a host.
+
