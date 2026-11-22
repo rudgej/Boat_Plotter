@@ -15,10 +15,7 @@
 /* ---------------- Wi-Fi uplink (BoatNetwork) ---------------- */
 
 #define CFG_WIFI_SSID       "BoatNetwork"
-
-/* The AP is WPA2. Fill this in to join it; if it is left empty the station
- * config falls back to an open network and will not associate. */
-#define CFG_WIFI_PASSWORD   ""
+#define CFG_WIFI_PASSWORD   "B0ssywifi"
 
 #define CFG_STA_IP          "192.168.10.50"
 #define CFG_STA_NETMASK     "255.255.255.0"

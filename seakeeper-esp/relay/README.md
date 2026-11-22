@@ -42,14 +42,14 @@ the topology means editing that file and reflashing.
 | Constant | Value | Why it is that value |
 |----------|-------|----------------------|
 | `CFG_WIFI_SSID` | `BoatNetwork` | the N100's AP |
-| `CFG_WIFI_PASSWORD` | *(empty)* | fill in; the AP is WPA2 |
+| `CFG_WIFI_PASSWORD` | *(set)* | WPA2 PSK, compiled in |
 | `CFG_STA_IP` | `192.168.10.50` | outside the AP's `.100`-`.200` pool |
 | `CFG_ETH_IP` | `192.168.0.254` | same `/24` as the unit, used as the source address |
 | `CFG_UPSTREAM_HOST` | `192.168.0.2` | the SeaKeeper |
 | `CFG_PORT_WEB` / `CFG_PORT_MQTT` | `80` / `9001` | the only two services needed |
 
-The Wi-Fi password is the one value you must edit. If it is left empty the
-firmware logs a warning at boot and will not associate with the WPA2 AP.
+The Wi-Fi credentials are compiled in, so the board joins BoatNetwork as soon
+as it boots.
 
 ## Network boundary
 
