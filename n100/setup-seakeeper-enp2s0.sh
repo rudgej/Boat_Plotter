@@ -16,7 +16,20 @@ CON=seakeeper
 ADDR=192.168.0.254/24
 
 if nmcli -t -f NAME con show | grep -qx "$CON"; then
-    echo "connection '$CON' already exists - showing it"
+    # Update in place. Reporting "already exists" and doing nothing was a real
+    # trap: the connection shipped with 172.16.102.254/24, so on a box that
+    # already had it the script silently left the wrong subnet in place.
+    echo "connection '$CON' exists - updating to $ADDR"
+    sudo -n nmcli con mod "$CON" \
+        connection.interface-name enp2s0 \
+        ipv4.method manual \
+        ipv4.addresses "$ADDR" \
+        ipv4.gateway "" \
+        ipv4.dns "" \
+        ipv4.never-default yes \
+        ipv6.method disabled \
+        connection.autoconnect yes \
+        connection.autoconnect-priority 50
 else
     sudo -n nmcli con add type ethernet ifname enp2s0 con-name "$CON" \
         ipv4.method manual \
