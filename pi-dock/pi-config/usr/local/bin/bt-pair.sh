@@ -24,6 +24,15 @@ kiosk_env
 
 TITLE="Bluetooth speaker"
 
+# Every dialog goes through this. Apps here run fullscreen, and a dialog that
+# opens behind Spotify looks frozen: the click lands on Spotify instead, so
+# "Close" appears to do nothing. zenity stays in the foreground so its input
+# still works; a detached helper raises the window once it exists.
+show() {
+    ( sleep 0.6; wlrctl window focus "app-id:zenity" >/dev/null 2>&1 ) >/dev/null 2>&1 &
+    zenity "$@"
+}
+
 # Close only windows this script left behind itself, from a run that died.
 for zpid in $(pgrep -f -- "--title=$TITLE" 2>/dev/null || true); do
     zppid=$(ps -o ppid= -p "$zpid" 2>/dev/null | tr -d ' ')
@@ -75,7 +84,7 @@ if [ -n "$CONNECTED" ]; then
     C_MAC=$(printf '%s' "$CONNECTED" | awk '{print $2}')
     C_NAME=$(printf '%s' "$CONNECTED" | cut -d' ' -f3-)
 
-    zenity --question --title="$TITLE" --width=460 --ok-label="Remove" \
+    show --question --title="$TITLE" --width=460 --ok-label="Remove" \
         --cancel-label="Cancel" \
         --text="Connected to $C_NAME.
 
@@ -89,7 +98,7 @@ fi
 # Nothing is searched until Start is pressed, so the device is in pairing mode
 # at the right moment. Searching the instant Remove was pressed is why devices
 # were never found.
-zenity --question --title="$TITLE" --width=460 --ok-label="Start" \
+show --question --title="$TITLE" --width=460 --ok-label="Start" \
     --cancel-label="Cancel" --default-cancel \
     --text="Put the device into pairing mode.
 
@@ -118,16 +127,22 @@ wait "$SCAN_PID" 2>/dev/null || true
 stop_progress
 
 # --- 4. list everything found --------------------------------------------
+# A device BlueZ already knows about is reported as "[CHG] Device ..." rather
+# than "[NEW] Device ...", so matching only NEW found nothing when the speaker
+# was already in the cache - which is exactly "no device found" while the
+# speaker sat there advertising. Any "Device <mac>" line counts.
 ROWS=$(mktemp)
-grep -oE '\[NEW\] Device ([0-9A-Fa-f:]{17})( .*)?' "$SCAN" 2>/dev/null |
-    sed 's/^\[NEW\] Device //' |
-    awk '{ mac=$1; $1=""; sub(/^ /,""); printf "%s\t%s\n", mac, ($0 == "" ? mac : $0) }' |
-    sort -u >"$ROWS"
+grep -oE 'Device ([0-9A-Fa-f:]{17})' "$SCAN" 2>/dev/null |
+    awk '{ print $2 }' | tr 'a-f' 'A-F' | sort -u |
+    while read -r mac; do
+        printf '%s\t%s\n' "$mac" "$(cmd --timeout 5 info "$mac" |
+            sed -n 's/^[[:space:]]*Name: //p' | head -1 | grep . || echo "$mac")"
+    done >"$ROWS"
 rm -f "$SCAN"
 
 if [ ! -s "$ROWS" ]; then
     rm -f "$ROWS"
-    zenity --info --title="$TITLE" --width=460 --ok-label="Close" \
+    show --info --title="$TITLE" --width=460 --ok-label="Close" \
         --text="No devices found.
 
 Put the speaker into pairing mode and press Bluetooth again." 2>/dev/null
@@ -136,7 +151,7 @@ fi
 
 LIST=$(mktemp)
 cut -f2 "$ROWS" >"$LIST"
-CHOSEN=$(zenity --list --title="$TITLE" --width=520 --height=320 \
+CHOSEN=$(show --list --title="$TITLE" --width=520 --height=320 \
     --ok-label="Connect" --cancel-label="Cancel" --column="Device" \
     --text="Choose the device to connect." <"$LIST" 2>/dev/null)
 rm -f "$LIST"
@@ -166,11 +181,11 @@ stop_progress
 
 # --- 6. done -------------------------------------------------------------
 if [ -n "${IDX:-}" ]; then
-    zenity --info --title="$TITLE" --width=460 --ok-label="Done" \
+    show --info --title="$TITLE" --width=460 --ok-label="Done" \
         --text="Done.
 $CHOSEN is connected and the audio is on it." 2>/dev/null
 else
-    zenity --info --title="$TITLE" --width=460 --ok-label="Done" \
+    show --info --title="$TITLE" --width=460 --ok-label="Done" \
         --text="Done.
 $CHOSEN is paired, but it has not offered an audio output.
 
