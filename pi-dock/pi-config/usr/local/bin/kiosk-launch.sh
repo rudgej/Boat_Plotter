@@ -27,14 +27,35 @@ kiosk_env() {
 # kiosk_launch <window-class> <url> <profile-dir>
 # Set KIOSK_BROWSER to use a different binary (Spotify needs Google Chrome for
 # its Widevine CDM; Debian's chromium ships none and cannot play DRM audio).
+#
+# Requires wlrctl (apt install wlrctl): pressing an app's button while it is
+# already running raises its window instead of restarting it.
 kiosk_launch() {
     local class="$1" url="$2" profile="$3"
     local browser="${KIOSK_BROWSER:-chromium}"
+    # Window matcher for an already-running instance. Chromium's Wayland app_id
+    # is derived from the URL, not from --class, so the default matches the host
+    # name in the window title; override with a 4th argument when that is wrong.
+    local match="${4:-title:${url#*//}}"
+    match="${match%/}"
 
     kiosk_env
 
-    # Close any existing instance for this profile. Matching on the profile
-    # directory targets exactly one app, so the buttons never kill each other.
+    # Already running? Ask the compositor to raise it.
+    #
+    # Both alternatives were measured and rejected: killing it first costs ~8 s
+    # of cold start (which is why switching away and back felt dead), and simply
+    # relaunching opens a *duplicate* window - two more MQTT connections against
+    # a unit that only tolerates so many.
+    #
+    # KIOSK_RESTART=1 forces the old kill-and-restart for a misbehaving app.
+    if [ "${KIOSK_RESTART:-0}" != "1" ] &&
+       pgrep -f -- "--user-data-dir=${profile}" >/dev/null 2>&1; then
+        if wlrctl window focus "$match" >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+
     if pkill -f -- "--user-data-dir=${profile}" 2>/dev/null; then
         sleep 1
     fi
