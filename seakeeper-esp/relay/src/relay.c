@@ -55,6 +55,29 @@ typedef struct {
 static listener_cfg_t s_cfg[RELAY_MAX_LISTENERS];
 static int            s_cfg_n = 0;
 
+/* The SeaKeeper may be powered off for days while the N100 keeps retrying. Log
+ * that at most once a minute instead of once per attempt. */
+static portMUX_TYPE s_fail_lock = portMUX_INITIALIZER_UNLOCKED;
+static TickType_t   s_fail_last_log = 0;
+
+static void log_upstream_failure(const char *name, uint16_t port)
+{
+    TickType_t now = xTaskGetTickCount();
+    bool log_it = false;
+
+    taskENTER_CRITICAL(&s_fail_lock);
+    if ((TickType_t)(now - s_fail_last_log) > pdMS_TO_TICKS(60000)) {
+        s_fail_last_log = now;
+        log_it = true;
+    }
+    taskEXIT_CRITICAL(&s_fail_lock);
+
+    if (log_it) {
+        ESP_LOGW(TAG, "%s: upstream " CFG_UPSTREAM_HOST ":%u unreachable"
+                      " (further reports limited to 1/min)", name, port);
+    }
+}
+
 static void set_nonblocking(int fd)
 {
     int fl = fcntl(fd, F_GETFL, 0);
@@ -314,8 +337,7 @@ static void relay_task(void *arg)
     }
 
     if (connect_timeout(up, &dst, RELAY_CONNECT_MS) != 0) {
-        ESP_LOGW(TAG, "%s: upstream " CFG_UPSTREAM_HOST ":%u unreachable",
-                 job->name, job->upstream_port);
+        log_upstream_failure(job->name, job->upstream_port);
         goto done;
     }
 

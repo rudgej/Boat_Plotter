@@ -43,6 +43,17 @@ static void wifi_reconnect_cb(void *arg)
     esp_wifi_connect();
 }
 
+/* This board may sit for days with no AP in range. A failed attempt fires a
+ * disconnect event every second, so count them and log at most once a minute
+ * rather than filling the console. */
+static TickType_t s_disc_last_log = 0;
+static uint32_t   s_disc_count = 0;
+
+/* Back off from 1 s to 30 s so a board with no AP does not churn a connect
+ * attempt every second for days. Reset on success. */
+static uint32_t   s_retry_ms = 1000;
+#define WIFI_RETRY_MAX_MS 30000
+
 /* ------------------------------------------------------------------ */
 /* Wi-Fi station                                                       */
 /* ------------------------------------------------------------------ */
@@ -80,22 +91,35 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t *d = (wifi_event_sta_disconnected_t *)data;
-        ESP_LOGW(TAG, "wifi disconnected (reason %d), retrying in 1 s",
-                 d ? d->reason : -1);
+        s_disc_count++;
 
-        /* Re-arm from now so a disconnect storm still retries once per second,
-         * and never connect immediately in parallel with a pending timer. */
+        TickType_t now = xTaskGetTickCount();
+        if ((TickType_t)(now - s_disc_last_log) > pdMS_TO_TICKS(60000)) {
+            s_disc_last_log = now;
+            ESP_LOGW(TAG, "wifi disconnected (reason %d), %u attempt(s) so far",
+                     d ? d->reason : -1, s_disc_count);
+        }
+
+        /* Re-arm from now so a disconnect storm still retries on a widening
+         * delay, and never connect immediately in parallel with a timer. */
         if (s_reconnect_timer == NULL) {
             esp_wifi_connect();
         } else {
             esp_timer_stop(s_reconnect_timer);
-            esp_timer_start_once(s_reconnect_timer, 1000 * 1000);
+            esp_timer_start_once(s_reconnect_timer, (uint64_t)s_retry_ms * 1000);
+            s_retry_ms = (s_retry_ms >= WIFI_RETRY_MAX_MS) ? WIFI_RETRY_MAX_MS
+                                                           : s_retry_ms * 2;
         }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
         if (s_reconnect_timer != NULL) {
             esp_timer_stop(s_reconnect_timer);
         }
+        if (s_disc_count > 0) {
+            ESP_LOGI(TAG, "wifi back after %u failed attempt(s)", s_disc_count);
+            s_disc_count = 0;
+        }
+        s_retry_ms = 1000;
         ESP_LOGI(TAG, "wifi up: " IPSTR, IP2STR(&e->ip_info.ip));
     }
 }
