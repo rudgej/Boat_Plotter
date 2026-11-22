@@ -36,17 +36,21 @@
 #define CFG_PORT_MQTT       9001
 
 /* Connection slots, kept separate rather than shared: the page can open several
- * sockets, and one busy browser must not take the MQTT slot and kill live data.
+ * sockets, and one busy browser must not take the MQTT slots and kill live data.
  *
  * Web is 6 because that is the per-host connection cap in Chrome and Firefox:
  * below it, a page with several assets gets requests refused rather than
- * queued. MQTT is 2 to survive a reconnect overlapping the old socket.
+ * queued. MQTT is 4 because the page alone holds TWO (hosting and displaying
+ * clients) for as long as it is open, and anything else - a monitoring script,
+ * an automation - needs a slot of its own. With a limit of 2 a third client is
+ * refused outright, and if a page socket ever lingers after a Wi-Fi blip the
+ * reconnect is refused too, which looks exactly like a lost connection.
  *
- * Each relayed connection costs two sockets (client + upstream), so 8
- * connections = 16 sockets, plus 2 listeners = 18, inside
- * CONFIG_LWIP_MAX_SOCKETS=20 and CONFIG_LWIP_MAX_ACTIVE_TCP=20. */
+ * Each relayed connection costs two sockets (client + upstream), so 10
+ * connections = 20 sockets, plus 2 listeners = 22, inside
+ * CONFIG_LWIP_MAX_SOCKETS=24 and CONFIG_LWIP_MAX_ACTIVE_TCP=24. */
 #define CFG_WEB_MAX_CONNS   6
-#define CFG_MQTT_MAX_CONNS  2
+#define CFG_MQTT_MAX_CONNS  4
 
 /* ---------------- WT32-ETH01 wiring ---------------- */
 

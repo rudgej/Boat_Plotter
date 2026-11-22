@@ -31,7 +31,7 @@ static const char *TAG = "relay";
 
 #define RELAY_BUF_SIZE       2048   /* per direction, per connection */
 #define RELAY_CONNECT_MS     5000   /* upstream connect timeout */
-#define RELAY_IDLE_MS        600000 /* drop a connection with no traffic at all */
+#define RELAY_IDLE_MS        120000 /* drop a connection with no traffic at all */
 #define RELAY_LISTEN_STACK   4096
 #define RELAY_TASK_STACK     8192   /* holds 2 x RELAY_BUF_SIZE of buffers */
 #define RELAY_TASK_PRIO      5
