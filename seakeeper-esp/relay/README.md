@@ -136,6 +136,21 @@ possible before each cycle:
 
 Serial port on macOS: `ls /dev/cu.usb*`.
 
+## Host test for the pump
+
+`pump()` moves the bytes, and its buffer-boundary handling cannot be exercised
+through the board without a flash cycle. `tools/pump_test.c` runs it on a
+development machine over real socketpairs, pushing 46 kB through with the
+deliberate pause at exactly one buffer that used to wedge the transfer:
+
+```sh
+clang -o /tmp/pump_test -I<stubs> -Isrc tools/pump_test.c src/relay.c -lpthread
+/tmp/pump_test      # expect: received 46000 of 46000 bytes, 0 corrupt, PASS
+```
+
+It needs the POSIX stand-ins in `<stubs>` (`freertos/*`, `esp_log.h`,
+`esp_err.h`, `lwip/sockets.h`). Not built by PlatformIO and never flashed.
+
 ## Expected log
 
 ```

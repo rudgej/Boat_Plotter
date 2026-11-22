@@ -171,8 +171,11 @@ static void pump_buf_compact(pump_buf_t *b)
 }
 
 /* Pumps until the connection is finished, fails, or goes idle.
- * Returns 0 on clean close, -1 on error or timeout. */
-static int pump(int a, int b, const char *name)
+ * Returns 0 on clean close, -1 on error or timeout.
+ *
+ * Not static so the buffer-boundary behaviour can be exercised on a host
+ * against real socketpairs; see tools/pump_test.c. */
+int pump(int a, int b, const char *name)
 {
     pump_buf_t ab;  /* read from a, to be written to b */
     pump_buf_t ba;  /* read from b, to be written to a */
@@ -184,6 +187,15 @@ static int pump(int a, int b, const char *name)
     memset(&ba, 0, sizeof(ba));
 
     for (;;) {
+        /* Compact before the read conditions are evaluated. A buffer that is
+         * full but fully sent (len == off == RELAY_BUF_SIZE) otherwise looks
+         * permanently full: it is skipped by the read test because len is not
+         * < RELAY_BUF_SIZE, and skipped by the write test because nothing is
+         * pending. The socket would never be polled again and the transfer
+         * would stall after exactly one buffer - which is precisely what a
+         * 45 KB page did on the wire (1024 bytes, then silence). */
+        pump_buf_compact(&ab);
+        pump_buf_compact(&ba);
         /* Finished only when both peers have closed AND everything already
          * read has been written out. Closing on the EOFs alone would truncate
          * a response that arrives just before the upstream closes. */
