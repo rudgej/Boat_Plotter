@@ -83,11 +83,13 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         ESP_LOGW(TAG, "wifi disconnected (reason %d), retrying in 1 s",
                  d ? d->reason : -1);
 
-        /* Several disconnect events can arrive together; arming an already
-         * armed one-shot returns ESP_ERR_INVALID_STATE, which is harmless. */
-        if (s_reconnect_timer == NULL ||
-            esp_timer_start_once(s_reconnect_timer, 1000 * 1000) != ESP_OK) {
+        /* Re-arm from now so a disconnect storm still retries once per second,
+         * and never connect immediately in parallel with a pending timer. */
+        if (s_reconnect_timer == NULL) {
             esp_wifi_connect();
+        } else {
+            esp_timer_stop(s_reconnect_timer);
+            esp_timer_start_once(s_reconnect_timer, 1000 * 1000);
         }
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *e = (ip_event_got_ip_t *)data;
@@ -145,6 +147,34 @@ static void wifi_init(void)
 /* Ethernet (WT32-ETH01, LAN8720)                                      */
 /* ------------------------------------------------------------------ */
 
+/* Link state is logged rather than acted on: TCP connections fail fast when the
+ * cable is out and recover by themselves when it returns, but without these
+ * events a dropped link looks like the SeaKeeper ignoring us - which is exactly
+ * the confusion this project started with. */
+static void eth_event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    (void)arg;
+    (void)base;
+    (void)data;
+
+    switch (id) {
+    case ETHERNET_EVENT_START:
+        ESP_LOGI(TAG, "ethernet driver started");
+        break;
+    case ETHERNET_EVENT_STOP:
+        ESP_LOGW(TAG, "ethernet driver stopped");
+        break;
+    case ETHERNET_EVENT_CONNECTED:
+        ESP_LOGI(TAG, "ethernet link up");
+        break;
+    case ETHERNET_EVENT_DISCONNECTED:
+        ESP_LOGW(TAG, "ethernet link down - downlink dead until it returns");
+        break;
+    default:
+        break;
+    }
+}
+
 static esp_err_t eth_init(void)
 {
     /* PHY power enable on this board. */
@@ -185,6 +215,13 @@ static esp_err_t eth_init(void)
     /* Fixed MAC so the DHCP server and ARP tables stay stable across reboots. */
     uint8_t eth_mac[6] = { 0x02, 0x00, 0x5e, 0x10, 0x00, 0x01 };
     esp_eth_ioctl(eth_handle, ETH_CMD_S_MAC_ADDR, eth_mac);
+
+    err = esp_event_handler_register(ETH_EVENT, ESP_EVENT_ANY_ID,
+                                     &eth_event_handler, NULL);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "ethernet event handler: %s", esp_err_to_name(err));
+        return err;
+    }
 
     esp_netif_config_t netif_cfg = ESP_NETIF_DEFAULT_ETH();
     s_eth_netif = esp_netif_new(&netif_cfg);
