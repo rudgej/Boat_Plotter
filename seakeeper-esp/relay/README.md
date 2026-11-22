@@ -76,14 +76,43 @@ supply. There is no reset line; the PHY is brought up by software.
 
 ## Build and flash
 
+**The board has no USB socket.** It is programmed through the header pins with a
+3.3 V USB-to-UART adapter held on with pogo pins. Wiring (TX/RX/GND/3V3) is in
+[`../SETUP.md`](../SETUP.md) §1 - it is the same harness used for the previous
+firmware.
+
 PlatformIO project, same workflow as the other ESP32 nodes:
 
 ```sh
 cd seakeeper-esp/relay
 pio run                     # build
-pio run -t upload           # flash (auto-detects the USB serial adapter)
+./flash.sh                  # build + upload (prompts for the bootloader steps)
 pio device monitor          # 115200 serial log
 ```
+
+or step by step:
+
+```sh
+pio run
+pio run -t upload --upload-port /dev/cu.usbserial-XXXX
+pio device monitor --port /dev/cu.usbserial-XXXX --baud 115200
+```
+
+### There is no auto-reset circuit - you must do it by hand
+
+PlatformIO normally resets the board into download mode over DTR/RTS. Those
+lines are not wired, so it cannot. Before **every** upload:
+
+1. Wire `IO0` (right header, 3rd pin) to `GND` and leave it there.
+2. Tap `EN` (left header, 1st pin) to `GND` to reset into download mode.
+3. Run the upload. It will sit waiting for the chip until step 2 has happened.
+4. **Disconnect IO0 from GND**, then tap `EN` to `GND` again to run the firmware.
+
+> GPIO0 is also the LAN8720 reference clock input, so IO0 must never be left
+> grounded while the bridge is running - watchdog reset loop if it is.
+
+`./flash.sh` performs the build, finds the adapter, and prints these steps at
+the right moments so nothing is left grounded by accident.
 
 `platform = espressif32@6.12.0` is pinned, so the toolchain (ESP-IDF 5.5.0) is
 downloaded once and then fixed - a platform update cannot silently change this
