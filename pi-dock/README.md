@@ -196,6 +196,72 @@ to once per 5 min). Logs to `/var/log/shelly-watchdog.log`.
 
 ---
 
+## 7a. Bluetooth speaker (dock button)
+
+The **Bluetooth** button on the dock runs `/usr/local/bin/bt-pair.sh`. Music goes
+to whatever speaker it connects: the speaker is set as the default output *and*
+the stream that is already playing is moved onto it.
+
+The flow, deliberately this simple:
+
+1. Press **Bluetooth**.
+2. If something is connected: `Connected to X. — Remove it and pair another
+   device?` — **[Remove] / [Cancel]**. Cancel changes nothing.
+3. `Put the device into pairing mode. — Press Start to begin the search.`
+   Nothing is scanned until Start, so the speaker really is in pairing mode.
+4. A pulsating window stays up for the whole search; only Cancel or the search
+   finishing closes it.
+5. Every device found is listed, unfiltered. Pick one.
+6. It pairs, connects, routes the audio, and says `Done`.
+
+### Packages this needs (not installed by default)
+
+| Package | Why |
+|---|---|
+| `libspa-0.2-bluetooth` | without it PipeWire cannot offer a Bluetooth sink; the link dies with `br-connection-profile-unavailable` |
+| `pulseaudio-utils` | provides `pactl`, the only tool here that can move a *playing* stream (`wpctl` cannot) |
+
+### Five traps, each measured on this box
+
+1. **`bluetoothctl --timeout N` blocks for the full N even when the command has
+   already succeeded.** Measured: `--timeout 10 info` takes 10,030 ms; the same
+   query without it takes 17 ms. Never put it on a query, and never use it to
+   sequence `pair` → `trust` → `connect`: that inserted a 28-second gap, the
+   speaker leaves pairing mode as soon as it is bonded, and the connect then
+   fails with `br-connection-refused`. Pair, wait only until `Paired: yes`, then
+   connect at once — measured bond-to-audio-output 57 ms.
+2. **A device BlueZ already knows is reported as `[CHG] Device`, not `[NEW]
+   Device`.** Matching only `[NEW]` produced "no devices found" while the
+   speaker was advertising at −26 dBm.
+3. **A default sink alone moves nothing.** Sounds already playing stay on the old
+   output, which is why pairing appeared to succeed with no music. Use
+   `pactl move-sink-input`.
+4. **Dialogs open behind the fullscreen kiosk apps**, so a tap lands on the app
+   behind and "Close" appears dead. Raise each dialog with
+   `wlrctl window focus app-id:zenity` once it exists, and never give a dialog a
+   `--timeout` — it closes itself and then a later box looks like it appeared at
+   random.
+5. **A backgrounded `zenity` gets stdin from `/dev/null`**, so `zenity --list <
+   rows` shows an empty box. Run dialogs in the foreground; raise them from a
+   detached helper instead.
+
+### Two radios
+
+The box has two Bluetooth adapters, `bossy #1` (`00:A6:2B:DC:22:1F`, onboard)
+and `bossy #2` (`0B:3B:22:AC:88:20`, USB). BlueZ's default controller changed
+after a `systemctl restart bluetooth`, and pairing history is per-radio:
+`/var/lib/bluetooth/<controller>/<device>`. A corrupt bond can be cleared with:
+
+```sh
+sudo systemctl stop bluetooth
+sudo rm -rf /var/lib/bluetooth/*/88:C6:26:C9:DD:0A     # the device's MAC
+sudo systemctl start bluetooth
+```
+
+Files: `pi-config/usr/local/bin/bt-pair.sh`.
+
+---
+
 ## 8. Holding-tank discharge automation
 
 A Python daemon (`holding-tank-dump.py`, systemd `holding-tank-dump.service`)

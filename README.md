@@ -145,7 +145,8 @@ its own.
   the boat 2026-11-21. The unit answers on `192.168.0.2`, not the `172.16.102.1` that
   `MIGRATION.md` §18 and `seakeeper-esp/SETUP.md` still describe.
 - **`pi-dock/`** — the live plotter config: Signal K settings, KIP dashboards, dock launcher,
-  BoatNetwork AP, Shelly automation, watchdogs. Full docs in **`pi-dock/README.md`**.
+  BoatNetwork AP, Shelly automation, Bluetooth speaker pairing, watchdogs. Full docs in
+  **`pi-dock/README.md`**.
 - **`engine-trends/`** — engine trend monitor: `SPEC.md` (locked spec), `engine-trends.py` (systemd
   daemon + Signal K publishing), `report.py` and the verification tools.
 - **`n100/`** — x86 build kit: `bootstrap.sh`, `install-apps.sh`, USB installer scripts,
