@@ -29,11 +29,11 @@
 
 static const char *TAG = "relay";
 
-#define RELAY_BUF_SIZE       1024   /* per direction, per connection */
+#define RELAY_BUF_SIZE       2048   /* per direction, per connection */
 #define RELAY_CONNECT_MS     5000   /* upstream connect timeout */
 #define RELAY_IDLE_MS        600000 /* drop a connection with no traffic at all */
 #define RELAY_LISTEN_STACK   4096
-#define RELAY_TASK_STACK     6144   /* holds 2 x RELAY_BUF_SIZE of buffers */
+#define RELAY_TASK_STACK     8192   /* holds 2 x RELAY_BUF_SIZE of buffers */
 #define RELAY_TASK_PRIO      5
 #define RELAY_MAX_LISTENERS  2
 
@@ -266,46 +266,76 @@ int pump(int a, int b, const char *name)
         /* a -> b */
         if (!a_eof && FD_ISSET(a, &rf)) {
             pump_buf_compact(&ab);
-            int n = recv(a, ab.buf + ab.len, RELAY_BUF_SIZE - ab.len, 0);
-            if (n > 0) {
-                ab.len += (size_t)n;
-                progress = true;
-            } else if (n == 0) {
-                a_eof = true;
-            } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                return -1;
+            /* Drain until the socket would block. Reading one buffer per
+             * select() wake makes bulk transfer round-trip bound: measured at
+             * ~45 KB/s through the bridge, which is about one buffer per Wi-Fi
+             * RTT. */
+            while (ab.len < RELAY_BUF_SIZE) {
+                int n = recv(a, ab.buf + ab.len, RELAY_BUF_SIZE - ab.len, 0);
+                if (n > 0) {
+                    ab.len += (size_t)n;
+                    progress = true;
+                } else if (n == 0) {
+                    a_eof = true;
+                    break;
+                } else if (errno == EINTR) {
+                    continue;
+                } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    break;
+                } else {
+                    return -1;
+                }
             }
         }
         if (FD_ISSET(b, &wf) && ab.len > ab.off) {
-            int n = send(b, ab.buf + ab.off, ab.len - ab.off, 0);
-            if (n > 0) {
-                ab.off += (size_t)n;
-                progress = true;
-            } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                return -1;
+            while (ab.len > ab.off) {
+                int n = send(b, ab.buf + ab.off, ab.len - ab.off, 0);
+                if (n > 0) {
+                    ab.off += (size_t)n;
+                    progress = true;
+                } else if (n < 0 && errno == EINTR) {
+                    continue;
+                } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    break;
+                } else {
+                    return -1;
+                }
             }
         }
 
         /* b -> a */
         if (!b_eof && FD_ISSET(b, &rf)) {
             pump_buf_compact(&ba);
-            int n = recv(b, ba.buf + ba.len, RELAY_BUF_SIZE - ba.len, 0);
-            if (n > 0) {
-                ba.len += (size_t)n;
-                progress = true;
-            } else if (n == 0) {
-                b_eof = true;
-            } else if (errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                return -1;
+            while (ba.len < RELAY_BUF_SIZE) {
+                int n = recv(b, ba.buf + ba.len, RELAY_BUF_SIZE - ba.len, 0);
+                if (n > 0) {
+                    ba.len += (size_t)n;
+                    progress = true;
+                } else if (n == 0) {
+                    b_eof = true;
+                    break;
+                } else if (errno == EINTR) {
+                    continue;
+                } else if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    break;
+                } else {
+                    return -1;
+                }
             }
         }
         if (FD_ISSET(a, &wf) && ba.len > ba.off) {
-            int n = send(a, ba.buf + ba.off, ba.len - ba.off, 0);
-            if (n > 0) {
-                ba.off += (size_t)n;
-                progress = true;
-            } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR) {
-                return -1;
+            while (ba.len > ba.off) {
+                int n = send(a, ba.buf + ba.off, ba.len - ba.off, 0);
+                if (n > 0) {
+                    ba.off += (size_t)n;
+                    progress = true;
+                } else if (n < 0 && errno == EINTR) {
+                    continue;
+                } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                    break;
+                } else {
+                    return -1;
+                }
             }
         }
 
