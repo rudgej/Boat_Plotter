@@ -86,3 +86,44 @@ read condition excluded a buffer that was full but fully sent. See the
 `pump()` comment in `seakeeper-esp/relay/src/relay.c` and
 `seakeeper-esp/relay/tools/pump_test.c`, which reproduces it on a host.
 
+## The page must be loaded from the unit's own address
+
+Serving the page from `192.168.10.50` gives a UI that renders and responds to
+touch, but with blank model / run-hours and dead power and speed commands.
+That is not a relay fault.
+
+The unit publishes its own address:
+
+```
+seakeeper/gyros -> {"gyros":[{"ip_address":"192.168.0.2","seakeeper_instance":1}]}
+```
+
+and `connection_manager.js` only enters its normal path when the advertised
+address equals the address the page was served from:
+
+```js
+if (seakeeperList[index].ip_address === location.hostname) {   // line 705
+    hostingInstance   = ...;
+    displayingIpAddress = seakeeperList[index].ip_address;
+    ...
+}
+```
+
+Loaded from `192.168.10.50` the comparison fails, the display client is never
+established, and the status topics the gauges and command handling depend on
+are never subscribed. Measured from the N100: one WebSocket connection instead
+of two, and no status traffic.
+
+**Fix:** load `http://192.168.0.2/` and redirect that destination to the bridge
+on the N100, so `location.hostname` matches the advertised address and the
+bridge stays a byte pipe:
+
+```sh
+iptables -t nat -A OUTPUT -d 192.168.0.2 -j DNAT --to-destination 192.168.10.50
+```
+
+Installed as `n100/seakeeper-redirect.service` (idempotent, enabled at boot).
+Verified: two WebSocket connections, the display client receiving 103,409
+bytes of status.
+
+

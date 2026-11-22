@@ -1,0 +1,20 @@
+[Unit]
+Description=Redirect the SeaKeeper's own address to the ESP32 relay bridge
+Documentation=file:/home/pi/Boat_Plotter/seakeeper-link.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# The unit is behind the WT32-ETH01 relay and is not reachable at its own
+# address from BoatNetwork. The web app identifies its host by comparing the
+# address it is served from against the address the unit advertises
+# (192.168.0.2), so the browser must be pointed at 192.168.0.2 — this rule
+# sends that traffic to the bridge, which relays ports 80 and 9001.
+#
+# Idempotent: add the rule only if it is not already present.
+Type=oneshot
+ExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C OUTPUT -d 192.168.0.2 -j DNAT --to-destination 192.168.10.50 2>/dev/null || /usr/sbin/iptables -t nat -A OUTPUT -d 192.168.0.2 -j DNAT --to-destination 192.168.10.50'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
