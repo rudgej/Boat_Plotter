@@ -33,13 +33,28 @@ show() {
     zenity "$@"
 }
 
-# Close only windows this script left behind itself, from a run that died.
-for zpid in $(pgrep -f -- "--title=$TITLE" 2>/dev/null || true); do
-    zppid=$(ps -o ppid= -p "$zpid" 2>/dev/null | tr -d ' ')
-    [ -z "$zppid" ] && continue
-    if ! ps -o args= -p "$zppid" 2>/dev/null | grep -q 'bt-pair\.sh'; then
-        kill -9 "$zpid" 2>/dev/null || true
+# Take sole control. Two presses used to leave two runs fighting: the older one
+# kept a "No devices found" box on screen, and its bluetoothctl remove could
+# delete the device the newer run was trying to connect to. Pressing the button
+# again now ends the previous run and its dialogs, then starts fresh.
+LOCKFILE=/tmp/bt-pair.pid
+if [ -f "$LOCKFILE" ]; then
+    OLD=$(cat "$LOCKFILE" 2>/dev/null || true)
+    if [ -n "${OLD:-}" ] && [ "$OLD" != "$$" ] && kill -0 "$OLD" 2>/dev/null; then
+        # Its dialogs first, then the script itself.
+        ps -eo pid,ppid | awk -v p="$OLD" '$2 == p { print $1 }' |
+            while read -r z; do kill -9 "$z" 2>/dev/null; done
+        kill -9 "$OLD" 2>/dev/null
+        sleep 0.3
     fi
+fi
+echo $$ >"$LOCKFILE"
+trap 'rm -f "$LOCKFILE"' EXIT INT TERM
+
+# Any dialog of ours left by a run that already died. Safe to match on the
+# title here: this script's own command line does not contain it.
+for zpid in $(pgrep -f -- "--title=$TITLE" 2>/dev/null || true); do
+    kill -9 "$zpid" 2>/dev/null || true
 done
 
 # A window that stays up while work runs. It is closed by this script when the
@@ -77,6 +92,11 @@ stop_progress() {
 progress_alive() { [ -n "$PROGRESS_PID" ] && kill -0 "$PROGRESS_PID" 2>/dev/null; }
 
 cmd() { timeout 35 bluetoothctl "$@" 2>/dev/null; }
+
+# Queries must NOT use "bluetoothctl --timeout N": that makes even a lookup wait
+# the full N seconds. Building the list with "--timeout 5 info" per device cost
+# 5 s each, so the box vanished and the list appeared 30-40 s later.
+q() { timeout 6 bluetoothctl "$@" 2>/dev/null; }
 
 # --- 2. already connected? ------------------------------------------------
 CONNECTED=$(timeout 8 bluetoothctl devices Connected 2>/dev/null | head -1)
@@ -124,21 +144,23 @@ while kill -0 "$SCAN_PID" 2>/dev/null; do
     sleep 0.5
 done
 wait "$SCAN_PID" 2>/dev/null || true
-stop_progress
 
 # --- 4. list everything found --------------------------------------------
+# The progress window stays up until this list is ready, so the screen never
+# goes blank between the search ending and the list appearing.
+#
 # A device BlueZ already knows about is reported as "[CHG] Device ..." rather
 # than "[NEW] Device ...", so matching only NEW found nothing when the speaker
-# was already in the cache - which is exactly "no device found" while the
-# speaker sat there advertising. Any "Device <mac>" line counts.
+# was already in the cache. Any "Device <mac>" line counts.
 ROWS=$(mktemp)
 grep -oE 'Device ([0-9A-Fa-f:]{17})' "$SCAN" 2>/dev/null |
     awk '{ print $2 }' | tr 'a-f' 'A-F' | sort -u |
     while read -r mac; do
-        printf '%s\t%s\n' "$mac" "$(cmd --timeout 5 info "$mac" |
+        printf '%s\t%s\n' "$mac" "$(q info "$mac" |
             sed -n 's/^[[:space:]]*Name: //p' | head -1 | grep . || echo "$mac")"
     done >"$ROWS"
 rm -f "$SCAN"
+stop_progress
 
 if [ ! -s "$ROWS" ]; then
     rm -f "$ROWS"
@@ -163,13 +185,31 @@ rm -f "$ROWS"
 
 # --- 5. pair, connect, route the audio -----------------------------------
 start_progress "Connecting to $CHOSEN..."
-cmd --timeout 25 pair "$TARGET" >/dev/null
-cmd --timeout 10 trust "$TARGET" >/dev/null
-cmd --timeout 20 connect "$TARGET" >/dev/null
+cmd --timeout 20 pair "$TARGET" >/dev/null
+cmd --timeout 8 trust "$TARGET" >/dev/null
+cmd --timeout 12 connect "$TARGET" >/dev/null
 
+# Say so if the pairing did not take, instead of reporting success regardless.
+if ! q info "$TARGET" | grep -qi 'Paired: yes'; then
+    stop_progress
+    show --info --title="$TITLE" --width=460 --ok-label="Close" \
+        --text="Could not pair with $CHOSEN.
+
+Put it into pairing mode and press Bluetooth again." 2>/dev/null
+    exit 1
+fi
+
+# The audio output does not exist the instant connect returns: A2DP is still
+# negotiating. Checking once immediately is why a working speaker was reported
+# as "has not offered an audio output" and then started playing 30 s later.
 MAC_U=$(printf '%s' "$TARGET" | tr 'a-z' 'A-Z' | tr ':' '_')
-IDX=$(pactl list short sinks 2>/dev/null |
-    awk -v m="$MAC_U" '{ n = toupper($2); if (index(n, m)) { print $1; exit } }')
+IDX=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+    IDX=$(pactl list short sinks 2>/dev/null |
+        awk -v m="$MAC_U" '{ n = toupper($2); if (index(n, m)) { print $1; exit } }')
+    [ -n "$IDX" ] && break
+    sleep 1
+done
 
 if [ -n "${IDX:-}" ]; then
     pactl set-default-sink "$IDX" >/dev/null 2>&1
