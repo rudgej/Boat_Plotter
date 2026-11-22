@@ -14,4 +14,5 @@
 URL="http://192.168.0.2/"
 [ -s /home/pi/.config/seakeeper-url ] && URL=$(cat /home/pi/.config/seakeeper-url)
 
-kiosk_launch "seakeeper-kiosk" "$URL" "/home/pi/.config/kiosk-seakeeper"
+kiosk_launch "seakeeper-kiosk" "$URL" "/home/pi/.config/kiosk-seakeeper" \
+    "app-id:chrome-192.168.0.2__-Default"

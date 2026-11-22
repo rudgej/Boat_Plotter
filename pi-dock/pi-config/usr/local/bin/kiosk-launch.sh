@@ -33,11 +33,28 @@ kiosk_env() {
 kiosk_launch() {
     local class="$1" url="$2" profile="$3"
     local browser="${KIOSK_BROWSER:-chromium}"
-    # Window matcher for an already-running instance. Chromium's Wayland app_id
-    # is derived from the URL, not from --class, so the default matches the host
-    # name in the window title; override with a 4th argument when that is wrong.
-    local match="${4:-title:${url#*//}}"
-    match="${match%/}"
+    # Window matchers for an already-running instance, tried in order.
+    #
+    # Chromium derives its Wayland app_id from the URL, not from --class, and
+    # wlrctl's "title:" criterion is an EXACT match, not a substring. Both
+    # matter: "title:Spotify" matches nothing because the window is called
+    # "Spotify - Web Player: ...", and every localhost app shares the app_id
+    # chrome-localhost__-Default, so Signal K, AvNav and the manuals cannot be
+    # told apart that way.
+    #
+    # Hence: prefer app-id: where the URL makes it unique (it survives title
+    # changes), and exact title: where several apps share an app_id. Separate
+    # several matchers with "|" - not a space, because titles contain spaces
+    # ("Signal K Server") and would be split apart by word splitting.
+    local matches
+    if [ -n "${4:-}" ]; then
+        matches="$4"
+    else
+        # Derived from the URL, so it needs the trailing slash removing. An
+        # explicit matcher must not be touched: one of them ends in "/" itself.
+        matches="title:${url#*//}"
+        matches="${matches%/}"
+    fi
 
     kiosk_env
 
@@ -48,12 +65,21 @@ kiosk_launch() {
     # relaunching opens a *duplicate* window - two more MQTT connections against
     # a unit that only tolerates so many.
     #
+    # When the matcher is wrong the app is killed and rebuilt, which for Spotify
+    # also interrupts playback: it reloads, so the music pauses.
+    #
     # KIOSK_RESTART=1 forces the old kill-and-restart for a misbehaving app.
     if [ "${KIOSK_RESTART:-0}" != "1" ] &&
        pgrep -f -- "--user-data-dir=${profile}" >/dev/null 2>&1; then
-        if wlrctl window focus "$match" >/dev/null 2>&1; then
-            return 0
-        fi
+        local m
+        while IFS= read -r m; do
+            [ -n "$m" ] || continue
+            if wlrctl window focus "$m" >/dev/null 2>&1; then
+                return 0
+            fi
+        done <<EOF
+$(printf '%s' "$matches" | tr '|' '\n')
+EOF
     fi
 
     if pkill -f -- "--user-data-dir=${profile}" 2>/dev/null; then

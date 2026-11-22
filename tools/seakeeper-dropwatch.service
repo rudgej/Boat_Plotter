@@ -1,0 +1,16 @@
+[Unit]
+Description=Record SeaKeeper MQTT connection drops and Wi-Fi events
+Documentation=file:/usr/local/bin/seakeeper-dropwatch.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Runs as root because iw event needs CAP_NET_ADMIN to watch the access point.
+# It only reads: samples sockets every 5 s and logs. Nothing is changed.
+Type=simple
+ExecStart=/usr/local/bin/seakeeper-dropwatch.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

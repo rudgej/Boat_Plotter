@@ -11,6 +11,13 @@ Wants=network-online.target
 # (192.168.0.2), so the browser must be pointed at 192.168.0.2 — this rule
 # sends that traffic to the bridge, which relays ports 80 and 9001.
 #
+# OUTPUT only, deliberately. A PREROUTING rule would let phones and laptops on
+# BoatNetwork use the same URL, and each page load takes TWO of the relay's four
+# MQTT slots. With the kiosk on 2 and the Signal K plugin on 1 there is only one
+# spare, so one phone would starve the page. Use KIP
+# (http://192.168.10.1:3000/@mxtommy/kip/) from a phone instead — it reads
+# Signal K and costs no MQTT slots.
+#
 # Idempotent: add the rule only if it is not already present.
 Type=oneshot
 ExecStart=/bin/sh -c '/usr/sbin/iptables -t nat -C OUTPUT -d 192.168.0.2 -j DNAT --to-destination 192.168.10.50 2>/dev/null || /usr/sbin/iptables -t nat -A OUTPUT -d 192.168.0.2 -j DNAT --to-destination 192.168.10.50'

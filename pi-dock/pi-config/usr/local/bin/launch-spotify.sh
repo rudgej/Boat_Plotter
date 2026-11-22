@@ -4,4 +4,5 @@
 
 # Widevine: only Google Chrome ships the CDM, and Spotify will not play without it.
 KIOSK_BROWSER=/usr/bin/google-chrome-stable
-kiosk_launch "spotify-kiosk" "https://open.spotify.com/" "/home/pi/.config/kiosk-spotify"
+kiosk_launch "spotify-kiosk" "https://open.spotify.com/" "/home/pi/.config/kiosk-spotify" \
+    "app-id:chrome-open.spotify.com__-Default"
