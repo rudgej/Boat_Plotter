@@ -1,338 +1,178 @@
 #!/bin/bash
 #
-# Bluetooth speaker button.
+# Bluetooth button. Approved flow:
 #
-# Press it and it tells you what it is doing, from the first second to the last.
-# Everything wrong with the earlier attempts came down to three ideas:
+#   1. Press the button.
+#   2. If something is connected: "Connected to X. Remove it?" [Remove] [Cancel].
+#      Cancel changes nothing.
+#   3. On Remove, the search starts immediately - in a window that is on screen
+#      the whole time, showing progress.
+#   4. Every device found is listed. No filtering.
+#   5. Choose one: it pairs, connects, and the audio is routed to it.
+#   6. "Done."
 #
-#   1. Never close a dialog and then work silently. A tap that makes the box
-#      vanish and does nothing visible for 20 seconds reads as broken. A
-#      pulsating window stays up for the whole operation and is closed by this
-#      script when the work is really finished.
-#   2. Never let a button say "OK" on a question. Every dialog here labels its
-#      buttons with what they do: Connect, Scan, Pair, Clear it, Keep it, Done.
-#   3. Never run a command without a limit. A "bluetoothctl remove" once sat for
-#      74 seconds behind a "Connecting audio..." message. Queries are instant;
-#      actions are capped.
+# Rules:
+#   - A window never closes itself. It closes when Cancel is pressed or when the
+#     step finishes.
+#   - Nothing runs without a window on screen, so a press never produces silence.
+#   - No other program's windows are touched.
 #
-# The saved speaker lives in /etc/boat-hifi-mac and survives reboots.
-
 set -u
-
-# --- single instance ------------------------------------------------------
-# mkdir rather than flock: a dialog that outlives this script used to inherit the
-# lock descriptor and lock the button out for good. A directory cannot be
-# inherited, and a lock left by a crashed run is cleared automatically.
-LOCKDIR=/tmp/bt-pair.lock.d
-if [ -d "$LOCKDIR" ]; then
-    # Only a live process that is not this one counts as a real run.
-    # (pgrep on the script name matches this very process, which made every
-    # press decide another run was active and quietly do nothing.)
-    other=$(cat "$LOCKDIR/pid" 2>/dev/null || true)
-    if [ -n "${other:-}" ] && [ "$other" != "$$" ] && kill -0 "$other" 2>/dev/null; then
-        exit 0
-    fi
-    rm -rf "$LOCKDIR"
-fi
-mkdir "$LOCKDIR" 2>/dev/null || exit 0
-echo $$ >"$LOCKDIR/pid"
 
 . /usr/local/bin/kiosk-launch.sh
 kiosk_env
 
-INTERACTIVE=1
-[ "${BT_PAIR_NONINTERACTIVE:-0}" = "1" ] && INTERACTIVE=0
+TITLE="Bluetooth speaker"
 
-MACFILE=/etc/boat-hifi-mac
-LOG=/var/log/bt-pair.log
-log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >>"$LOG" 2>/dev/null || true; }
+# Close only windows this script left behind itself, from a run that died.
+for zpid in $(pgrep -f -- "--title=$TITLE" 2>/dev/null || true); do
+    zppid=$(ps -o ppid= -p "$zpid" 2>/dev/null | tr -d ' ')
+    [ -z "$zppid" ] && continue
+    if ! ps -o args= -p "$zppid" 2>/dev/null | grep -q 'bt-pair\.sh'; then
+        kill -9 "$zpid" 2>/dev/null || true
+    fi
+done
 
-# --- bounded calls --------------------------------------------------------
-# "bluetoothctl --timeout N" makes even a query wait the full N seconds, which
-# is why pairing used to take 40 s. Queries get no --timeout; actions do.
-q() { timeout 8 bluetoothctl "$@" 2>/dev/null; }
-act() { timeout 35 bluetoothctl "$@" 2>/dev/null; }
-
-name_of() { q info "$1" | sed -n 's/^[[:space:]]*Name: //p' | head -1; }
-is_paired() { q info "$1" | grep -qi 'Paired: yes'; }
-underscored() { printf '%s' "$1" | tr 'a-z' 'A-Z' | tr ':' '_'; }
-
-sink_index() {
-    timeout 5 pactl list short sinks 2>/dev/null |
-        awk -v m="$1" '{ n = toupper($2); if (index(n, m)) { print $1; exit } }'
-}
-speaker_working() { [ -n "$(sink_index "$(underscored "$1")")" ]; }
-
-# --- dialogs --------------------------------------------------------------
-PROGRESS_PID=""
-
-# A pulsating window that stays until progress_end closes it.
+# A window that stays up while work runs. It is closed by this script when the
+# work ends, or by the user pressing Cancel - never on a timer.
 #
-# zenity --progress keeps an OK button even with --no-cancel, so a tap closed
-# the box while the scan carried on invisibly - the "box just goes" complaint.
-# --auto-close removes the buttons; the window lives as long as its input, which
-# is a sleep here, and is killed when the work is done.
-progress() { # text
-    [ "$INTERACTIVE" = 1 ] || { echo "$1"; return 0; }
-    progress_end
-    ( sleep 120 ) | zenity --progress --title="Bluetooth speaker" --width=460 \
-        --pulsate --auto-close --text="$1" 2>/dev/null 9>&- &
+# The input is a pipe this script owns (fd 8), not "( sleep 300 ) | zenity":
+# with a pipeline, waiting for the window waited on the feeder instead and the
+# whole run sat there for five minutes with nothing on screen.
+PROGRESS_PID=""
+PROGRESS_PIPE=""
+start_progress() {
+    PROGRESS_PIPE="/tmp/bt-prog.$$"
+    rm -f "$PROGRESS_PIPE"
+    mkfifo "$PROGRESS_PIPE" || return 0
+    zenity --progress --title="$TITLE" --width=460 --pulsate --auto-close \
+        --text="$1" <"$PROGRESS_PIPE" 2>/dev/null &
     PROGRESS_PID=$!
-    sleep 0.4
-    wlrctl window focus "app-id:zenity" >/dev/null 2>&1 || true
+    exec 8>"$PROGRESS_PIPE"
+    ( sleep 0.5; wlrctl window focus "app-id:zenity" >/dev/null 2>&1 ) >/dev/null 2>&1 &
 }
 
-progress_end() {
+stop_progress() {
+    if [ -n "$PROGRESS_PIPE" ]; then
+        exec 8>&-
+        rm -f "$PROGRESS_PIPE"
+        PROGRESS_PIPE=""
+    fi
     if [ -n "$PROGRESS_PID" ]; then
-        kill "$PROGRESS_PID" 2>/dev/null || true
         wait "$PROGRESS_PID" 2>/dev/null || true
         PROGRESS_PID=""
     fi
 }
 
-# True while the progress window is still up. If the user pressed Cancel it is
-# gone, and the long operation behind it must stop rather than carry on
-# invisibly and pop a result box out of nowhere later.
-progress_running() { [ -n "$PROGRESS_PID" ] && kill -0 "$PROGRESS_PID" 2>/dev/null; }
+# True while the window is up. False means the user pressed Cancel.
+progress_alive() { [ -n "$PROGRESS_PID" ] && kill -0 "$PROGRESS_PID" 2>/dev/null; }
 
-dialog() { # runs zenity, raising it above the fullscreen apps
-    zenity "$@" 2>/dev/null &
-    local pid=$!
-    sleep 0.4
-    wlrctl window focus "app-id:zenity" >/dev/null 2>&1 || true
-    wait "$pid"
-    return $?
-}
+cmd() { timeout 35 bluetoothctl "$@" 2>/dev/null; }
 
-info() {
-    progress_end
-    if [ "$INTERACTIVE" = 1 ]; then
-        dialog --info --title="Bluetooth speaker" --width=460 \
-            --ok-label="Done" --text="$1"
-    else
-        echo "$1"
-    fi
-    log "said: $(printf '%s' "$1" | tr '\n' ' ')"
-}
+# --- 2. already connected? ------------------------------------------------
+CONNECTED=$(timeout 8 bluetoothctl devices Connected 2>/dev/null | head -1)
+if [ -n "$CONNECTED" ]; then
+    C_MAC=$(printf '%s' "$CONNECTED" | awk '{print $2}')
+    C_NAME=$(printf '%s' "$CONNECTED" | cut -d' ' -f3-)
 
-ask_yes() { # text, ok-label, cancel-label
-    progress_end
-    [ "$INTERACTIVE" = 1 ] || return 1
-    dialog --question --title="Bluetooth speaker" --width=460 \
-        --ok-label="$2" --cancel-label="$3" --default-cancel --text="$1"
-}
+    zenity --question --title="$TITLE" --width=460 --ok-label="Remove" \
+        --cancel-label="Cancel" \
+        --text="Connected to $C_NAME.
 
-choose() { # text, ok-label, rows as "mac|label", echoes the mac
-    progress_end
-    [ "$INTERACTIVE" = 1 ] || return 1
-    printf '%s\n' "$3" |
-        dialog --list --title="Bluetooth speaker" --width=520 --height=260 \
-            --ok-label="$2" --cancel-label="Cancel" \
-            --column="MAC" --column="Speaker" --hide-column=1 --print-column=1 \
-            --text="$1"
-}
+Remove it and pair another device?" 2>/dev/null
+    [ $? -eq 0 ] || exit 0
 
-cleanup() { progress_end; rm -rf "$LOCKDIR"; }
-trap cleanup EXIT INT TERM
+    timeout 15 bluetoothctl remove "$C_MAC" >/dev/null 2>&1
+fi
 
-# --- speaker list ---------------------------------------------------------
-paired_audio() {
-    q devices Paired | while read -r _ mac _rest; do
-        local txt name state
-        txt=$(q info "$mac")
-        printf '%s' "$txt" | grep -qiE '^[[:space:]]*Icon: audio' || continue
-        name=$(printf '%s' "$txt" | sed -n 's/^[[:space:]]*Name: //p' | head -1)
-        state=""
-        printf '%s' "$txt" | grep -qi 'Connected: yes' && state=" - connected"
-        printf '%s|%s%s\n' "$mac" "${name:-$mac}" "$state"
-    done
-}
+# --- 3. wait for the user to say the device is in pairing mode -----------
+# Nothing is searched until Start is pressed, so the device is in pairing mode
+# at the right moment. Searching the instant Remove was pressed is why devices
+# were never found.
+zenity --question --title="$TITLE" --width=460 --ok-label="Start" \
+    --cancel-label="Cancel" --default-cancel \
+    --text="Put the device into pairing mode.
 
-# --- actions --------------------------------------------------------------
-connect_speaker() {
-    local mac="$1" name idx moved=0 input
-    name=$(name_of "$mac")
-    log "connecting $mac"
+Press Start to begin the search." 2>/dev/null
+[ $? -eq 0 ] || exit 0
 
-    progress "Connecting to ${name:-$mac}..."
+# --- 3b. search, with the window on screen the whole time ----------------
+SCAN=$(mktemp)
+start_progress "Searching for devices in pairing mode...
 
-    act --timeout 5 power on >/dev/null
-    if ! q info "$mac" | grep -qi 'Connected: yes'; then
-        act --timeout 12 connect "$mac" >/dev/null
-    fi
-    if ! progress_running; then
-        log "connect cancelled"
+This window stays until the search finishes."
+
+cmd --timeout 15 scan bredr >"$SCAN" &
+SCAN_PID=$!
+
+while kill -0 "$SCAN_PID" 2>/dev/null; do
+    if ! progress_alive; then
+        # Cancel was pressed: stop searching and leave everything as it was.
+        kill "$SCAN_PID" 2>/dev/null || true
+        rm -f "$SCAN"
         exit 0
     fi
+    sleep 0.5
+done
+wait "$SCAN_PID" 2>/dev/null || true
+stop_progress
 
-    for _ in 1 2 3 4 5 6; do
-        idx=$(sink_index "$(underscored "$mac")")
-        [ -n "$idx" ] && break
-        sleep 1
-    done
+# --- 4. list everything found --------------------------------------------
+ROWS=$(mktemp)
+grep -oE '\[NEW\] Device ([0-9A-Fa-f:]{17})( .*)?' "$SCAN" 2>/dev/null |
+    sed 's/^\[NEW\] Device //' |
+    awk '{ mac=$1; $1=""; sub(/^ /,""); printf "%s\t%s\n", mac, ($0 == "" ? mac : $0) }' |
+    sort -u >"$ROWS"
+rm -f "$SCAN"
 
-    if [ -z "$idx" ]; then
-        progress_end
-        log "no audio from $mac"
-        return 1
-    fi
+if [ ! -s "$ROWS" ]; then
+    rm -f "$ROWS"
+    zenity --info --title="$TITLE" --width=460 --ok-label="Close" \
+        --text="No devices found.
 
-    timeout 5 pactl set-default-sink "$idx" >/dev/null 2>&1
-    # A default only affects new sounds, so anything already playing has to be
-    # moved or it carries on coming out of the built-in speakers.
-    for input in $(timeout 5 pactl list short sink-inputs 2>/dev/null | awk '{print $1}'); do
-        timeout 5 pactl move-sink-input "$input" "$idx" >/dev/null 2>&1 && moved=$((moved + 1))
-    done
-    log "sink $idx default, moved $moved stream(s)"
-
-    printf '%s\n' "$mac" | sudo tee "$MACFILE" >/dev/null
-    progress_end
-    info "Music now plays on ${name:-$mac}."
-    return 0
-}
-
-forget_speaker() {
-    local mac="$1" name
-    name=$(name_of "$mac")
-    progress "Forgetting ${name:-$mac}..."
-    act --timeout 10 remove "$mac" >/dev/null
-    if [ "$(cat "$MACFILE" 2>/dev/null | tr -d '[:space:]')" = "$mac" ]; then
-        sudo rm -f "$MACFILE"
-    fi
-    log "forgot $mac"
-    progress_end
-    info "${name:-$mac} has been forgotten.
-Press Bluetooth again when you want to pair it."
-}
-
-scan_and_pair() {
-    local scan cands mac name target scanpid
-
-    # Scanning is started in the background and watched, rather than blocking for
-    # the full enquiry window. A speaker in pairing mode answers within a couple
-    # of seconds, so the wait is as short as the speaker allows instead of a
-    # fixed 20 s of nothing.
-    progress "Looking for a speaker...
-
-Put it into pairing mode. This takes a few seconds."
-
-    scan=$(mktemp)
-    act --timeout 25 scan bredr >"$scan" &
-    scanpid=$!
-
-    local waited=0 audio_found=0
-    while [ "$waited" -lt 22 ]; do
-        sleep 1
-        waited=$((waited + 1))
-        if ! progress_running; then
-            kill "$scanpid" 2>/dev/null || true
-            rm -f "$scan"
-            log "scan cancelled after ${waited}s"
-            exit 0
-        fi
-        for mac in $(grep -oE '\[NEW\] Device ([0-9A-Fa-f:]{17})' "$scan" 2>/dev/null |
-            awk '{print $3}' | tr 'a-f' 'A-F' | sort -u); do
-            if q info "$mac" | grep -qiE '^[[:space:]]*Icon: audio'; then
-                audio_found=1
-                break
-            fi
-        done
-        [ "$audio_found" = 1 ] && break
-    done
-
-    kill "$scanpid" 2>/dev/null || true
-    wait "$scanpid" 2>/dev/null || true
-    log "scan finished after ${waited}s, audio device found: $audio_found"
-    progress_end
-
-    cands=$(mktemp)
-    for mac in $(grep -oE '([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}' "$scan" |
-        tr 'a-f' 'A-F' | sort -u); do
-        q info "$mac" | grep -qiE '^[[:space:]]*Icon: audio' || continue
-        name=$(name_of "$mac")
-        printf '%s|%s\n' "$mac" "${name:-unknown}" >>"$cands"
-    done
-    rm -f "$scan"
-
-    if [ ! -s "$cands" ]; then
-        rm -f "$cands"
-        info "No speaker answered.
-
-Put the speaker into pairing mode - most only advertise for a couple of
-minutes - then press Bluetooth again."
-        return 1
-    fi
-
-    target=$(choose "Choose the speaker to pair." "Pair" "$(cat "$cands")")
-    rm -f "$cands"
-    [ -n "${target:-}" ] || return 0
-
-    progress "Pairing with $(name_of "$target")..."
-    log "pairing $target"
-    act --timeout 25 pair "$target" >/dev/null
-    if ! is_paired "$target"; then
-        # A stale entry from the LE advertisement is the usual cause.
-        log "retrying $target without its cache entry"
-        act --timeout 10 remove "$target" >/dev/null
-        sleep 2
-        act --timeout 25 pair "$target" >/dev/null
-    fi
-    progress_end
-
-    if ! is_paired "$target"; then
-        info "Pairing did not complete.
-
-Make sure the speaker is still in pairing mode, then try again."
-        return 1
-    fi
-
-    act --timeout 10 trust "$target" >/dev/null
-    connect_speaker "$target"
-}
-
-# --- main -----------------------------------------------------------------
-MAC=$(cat "$MACFILE" 2>/dev/null | tr -d '[:space:]')
-
-# Direct entry points, for testing and for running an action from a script:
-#   BT_PAIR_ACTION=scan | connect:<mac> | forget:<mac>
-case "${BT_PAIR_ACTION:-}" in
-scan) scan_and_pair; exit $? ;;
-connect:*) connect_speaker "${BT_PAIR_ACTION#connect:}"; exit $? ;;
-forget:*) forget_speaker "${BT_PAIR_ACTION#forget:}"; exit $? ;;
-esac
-
-if [ "$INTERACTIVE" = 0 ]; then
-    if [ -n "${MAC:-}" ] && speaker_working "$MAC"; then
-        echo "connected and playing: $(name_of "$MAC")"
-    else
-        echo "not connected"
-    fi
-    exit 0
+Put the speaker into pairing mode and press Bluetooth again." 2>/dev/null
+    exit 1
 fi
 
-if [ -n "${MAC:-}" ] && speaker_working "$MAC"; then
-    name=$(name_of "$MAC")
-    if ask_yes "${name:-$MAC} is connected.
+LIST=$(mktemp)
+cut -f2 "$ROWS" >"$LIST"
+CHOSEN=$(zenity --list --title="$TITLE" --width=520 --height=320 \
+    --ok-label="Connect" --cancel-label="Cancel" --column="Device" \
+    --text="Choose the device to connect." <"$LIST" 2>/dev/null)
+rm -f "$LIST"
+[ -n "${CHOSEN:-}" ] || { rm -f "$ROWS"; exit 0; }
 
-Clear it? You will need to pair it again before it can be used." "Clear it" "Keep it"; then
-        forget_speaker "$MAC"
-    fi
-    exit 0
+TARGET=$(awk -F'\t' -v n="$CHOSEN" '$2 == n { print $1; exit }' "$ROWS")
+rm -f "$ROWS"
+[ -n "$TARGET" ] || exit 1
+
+# --- 5. pair, connect, route the audio -----------------------------------
+start_progress "Connecting to $CHOSEN..."
+cmd --timeout 25 pair "$TARGET" >/dev/null
+cmd --timeout 10 trust "$TARGET" >/dev/null
+cmd --timeout 20 connect "$TARGET" >/dev/null
+
+MAC_U=$(printf '%s' "$TARGET" | tr 'a-z' 'A-Z' | tr ':' '_')
+IDX=$(pactl list short sinks 2>/dev/null |
+    awk -v m="$MAC_U" '{ n = toupper($2); if (index(n, m)) { print $1; exit } }')
+
+if [ -n "${IDX:-}" ]; then
+    pactl set-default-sink "$IDX" >/dev/null 2>&1
+    for input in $(pactl list short sink-inputs 2>/dev/null | awk '{print $1}'); do
+        pactl move-sink-input "$input" "$IDX" >/dev/null 2>&1
+    done
 fi
+stop_progress
 
-choice=$(choose "Which speaker?" "Select" "$(paired_audio)
-SCAN|Scan for a new speaker...")
-[ -n "${choice:-}" ] || exit 0
-
-if [ "$choice" = "SCAN" ]; then
-    scan_and_pair
+# --- 6. done -------------------------------------------------------------
+if [ -n "${IDX:-}" ]; then
+    zenity --info --title="$TITLE" --width=460 --ok-label="Done" \
+        --text="Done.
+$CHOSEN is connected and the audio is on it." 2>/dev/null
 else
-    if ! connect_speaker "$choice"; then
-        name=$(name_of "$choice")
-        if ask_yes "${name:-$choice} did not answer.
+    zenity --info --title="$TITLE" --width=460 --ok-label="Done" \
+        --text="Done.
+$CHOSEN is paired, but it has not offered an audio output.
 
-Look for a different speaker?" "Look" "Cancel"; then
-            scan_and_pair
-        fi
-    fi
+Switch it on or wake it, then press Bluetooth again." 2>/dev/null
 fi
