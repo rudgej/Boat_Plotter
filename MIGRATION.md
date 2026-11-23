@@ -1385,6 +1385,44 @@ Zones are persisted in `~/.signalk/baseDeltas.json`, which Signal K replays at s
 survive restarts and reinstalls of the plugin tree. Re-run after a full Signal K reinstall anyway,
 since `baseDeltas.json` lives in `.signalk`.
 
+### 8.10 Firmware updates from the N100 (OTA)
+
+Water level, generator temperature and the CYD now serve ArduinoOTA, but only
+while associated to the primary network the N100 hosts. On `BoatNetwork2` the
+port is not opened, so the fallback network is not a second update path.
+
+**One-time USB flash.** The partition table changed to two app slots:
+`min_spiffs.csv` on the 4 MB boards (water level, CYD — the live CYD app is
+1.3 MB, so it fits) and `app3M_fat9M_16MB.csv` on the 16 MB generator sender.
+NVS is at `0x9000` in every layout, so water calibration and probe roles survive.
+A device that predates the change has one app slot and cannot be updated OTA.
+
+On the N100, once:
+
+```bash
+mkdir -p ~/ota
+# from the Mac:
+scp ~/.platformio/packages/framework-arduinoespressif32/tools/espota.py \
+    pi@bossy.local:~/ota/
+scp esp-signalk-sender/tools/ota_push.sh pi@bossy.local:~/ota/
+```
+
+Every deploy, from the N100:
+
+```bash
+~/ota/ota_push.sh firmware.bin bossy-ota 192.168.10.191
+```
+
+The token is `OTA_PASSWORD` in each firmware's config (`bossy-ota`). It
+identifies the fleet, not the N100's hardware: replacing the N100 does not
+change it, and the gate is the network, not an address. It is a LAN token, not
+a security boundary.
+
+**Not covered:** the wind sender is an ESP-NOW access point with no link to the
+N100, so it still needs a physical flash. The CYD's 4 MB flash is the tight
+one; check the app size before adding fonts.
+
+
 ### 7.9 Keeping the console clean (splash, then app — no scrolling text)
 
 `quiet splash systemd.show_status=0` is **not enough**. Plymouth quits a few seconds in,
