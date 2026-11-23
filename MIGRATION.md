@@ -1387,12 +1387,14 @@ since `baseDeltas.json` lives in `.signalk`.
 
 ### 8.10 Firmware updates from the N100 (OTA)
 
-Water level, generator temperature and the CYD now serve ArduinoOTA, but only
-while associated to the primary network the N100 hosts. On `BoatNetwork2` the
-port is not opened, so the fallback network is not a second update path.
+Water level, generator temperature, the wind sender and the CYD all serve
+ArduinoOTA, but only while associated to the primary network the N100 hosts. On
+`BoatNetwork2` the port is not opened, so the fallback network is not a second
+update path.
 
-**One-time USB flash.** Water level and generator temperature keep their stock
-partition tables; both already provide two OTA app slots, so only the firmware
+**One-time USB flash.** Water level, generator temperature and the wind sender
+keep their stock partition tables (`default.csv` and two copies of
+`default_16MB.csv`); all already provide two OTA app slots, so only the firmware
 changes and NVS survives. The CYD's stock `huge_app.csv` has a single 3 MB slot,
 so it moves to `min_spiffs.csv` (two 1.9 MB slots; the live app is 1.3 MB). NVS
 is at `0x9000` in every layout, so calibration, probe roles and display settings
@@ -1420,9 +1422,48 @@ identifies the fleet, not the N100's hardware: replacing the N100 does not
 change it, and the gate is the network, not an address. It is a LAN token, not
 a security boundary.
 
-**Not covered:** the wind sender is an ESP-NOW access point with no link to the
-N100, so it still needs a physical flash. The CYD's 4 MB flash is the tight
-one; check the app size before adding fonts.
+**The full loop**, which is what actually gets used. Build on the Mac, copy the
+single image over, push from the N100:
+
+```bash
+pio run -e <env>                        # image: .pio/build/<env>/firmware.bin
+scp .pio/build/<env>/firmware.bin pi@bossy.local:~/ota/
+ssh pi@bossy.local '~/ota/ota_push.sh ~/ota/firmware.bin bossy-ota <address>'
+```
+
+Several addresses can follow one invocation; the script reports each and exits
+non-zero if any host failed, so a partial deploy is not silent.
+
+| Device | Project | Env | Address | Readback |
+|---|---|---|---|---|
+| Water level | `water-level-sensor` | `waterlevel` | `192.168.10.191` | `fw` in `/status` |
+| Wind | `Wind-Sensor` (`Wind-Waveshare`) | `windsend` | `192.168.10.171` | `fw` in `/status` (next flash) |
+| Generator temperature | `Generator-Temp-Sender` | `gentemp` | `192.168.10.172` | `fw` in `/status` |
+| CYD display | `CYD-Display` | `cyd` | `192.168.10.154` | serial boot banner; no `/status` |
+
+**Verify, do not assume.** A push that reports success only means the bytes were
+accepted. The senders report the running build as `fw`, and the packet counter
+restarts after the reboot, which together prove the new image is executing:
+
+```bash
+curl -s http://192.168.10.191/status | tr ',' '\n' | grep -E 'fw|sending'
+```
+
+Signatures worth recognising, because they mean different things:
+
+| Output | Meaning |
+|---|---|
+| `Authenticating...FAIL` | token does not match `OTA_PASSWORD` in that image |
+| `No response from the ESP` | device off, or sitting on `BoatNetwork2` rather than the primary |
+| `Error Uploading` part-way | link dropped; re-run — a slot is only switched on a complete image |
+
+Recorded on hardware 2026-11-23: water level updated test → production and read
+back `fw 0.3.4`; generator temperature likewise (`0.3.5-ota-test` → `0.3.4`). The
+CYD and wind sender serve OTA but have not been updated over the air yet.
+
+**Not covered:** the CYD's 4 MB flash is the tight one; check the app size before
+adding fonts. The CYD also runs no web server, so its only version evidence is
+the serial boot banner and heartbeat.
 
 
 ### 7.9 Keeping the console clean (splash, then app — no scrolling text)

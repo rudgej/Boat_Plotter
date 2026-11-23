@@ -119,6 +119,29 @@ NMEA 2000 arrives via `can0`. NMEA 0183 arrives on three feeds configured in Sig
 sensor over UDP 10110, and two serial ports at 4800 and 38400 baud. **Signal K owns both serial
 ports**; AvNav reads everything through Signal K rather than opening the ports itself.
 
+### Firmware updates (OTA)
+
+The sensor firmware is updated from this box, over `BoatNetwork` only: each
+device opens its OTA port while associated to the primary network and closes it
+on `BoatNetwork2`.
+
+```bash
+pio run -e <env>                        # on the Mac: .pio/build/<env>/firmware.bin
+scp .pio/build/<env>/firmware.bin pi@bossy.local:~/ota/
+ssh pi@bossy.local '~/ota/ota_push.sh ~/ota/firmware.bin bossy-ota <address>'
+```
+
+| Device | Address | Version readback |
+|---|---|---|
+| Water level | `192.168.10.191` | `fw` in `/status` |
+| Wind | `192.168.10.171` | `fw` in `/status` (from its next flash) |
+| Generator temperature | `192.168.10.172` | `fw` in `/status` |
+| CYD display | `192.168.10.154` | serial boot banner only |
+
+Read the version back — `curl -s http://192.168.10.191/status | tr ',' '\n' | grep fw`
+— because the uploader reporting success does not mean the new image is running.
+Full procedure, partition notes and failure signatures: `MIGRATION.md` §8.10.
+
 ### Boat automations
 
 Three custom Python scripts in `/usr/local/bin`, each run by systemd:
