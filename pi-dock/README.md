@@ -349,12 +349,33 @@ Two mitigations, both measured:
 
 - `iw dev wlp3s0 set power_save off` removed a second, distinct fault —
   `firmware failed to leave lps state` went from several a minute to **0**.
-  NetworkManager leaves `wifi.powersave` at `0 (default)` on the `wlp3s0`
-  profiles; set it to `2 (disable)` to make this survive a reboot.
-- The 2.4 GHz overlap is the root of the coexistence trouble. `Bossy Wi-Fi` is
-  also broadcast on 5 GHz (ch40/5200), which would remove the overlap entirely.
-  Left as-is deliberately: the boat is a hard Wi-Fi environment and 2.4 GHz is
-  what works there.
+  `802-11-wireless.powersave` is now `2 (disable)` on the uplink profile, so this
+  survives a reboot.
+- **Fixed by moving the uplink to 5 GHz.** `Bossy Wi-Fi` broadcasts on ch40/5200
+  as well as 2.4 GHz, so the uplink profile is now pinned with
+  `802-11-wireless.band a`. With Bluetooth on 2.4 GHz and Wi-Fi on 5 GHz there is
+  no band overlap: `failed to send h2c command` went from **236 in 3 minutes to
+  0**, with audio still streaming. The change was made by a script that waits for
+  a working default route and **reverts the band automatically** if it never
+  comes back — a laptop SSHing in cannot recover a box that has lost its uplink.
+  `BoatNetwork` was never referenced by that script: it runs on the separate USB
+  dongle and is the way back onto the box if the uplink fails.
+
+### Deliberately disabled on the box
+
+On a boat, none of these earn their keep. All are reversible with
+`systemctl enable --now <unit>`:
+
+| Unit | Reason |
+|---|---|
+| `cockpit-light.service` | not wanted (see §9) |
+| `bt-hifi.service` | leftover from the old Pi, could never work (see above) |
+| `ModemManager` | `mmcli -L` reports no modems |
+| `apt-daily.timer`, `apt-daily-upgrade.timer` | pull package lists on boat internet at random times; `unattended-upgrades` is not installed |
+| `man-db.timer`, `e2scrub_all.timer` | regenerate the man index / scrub LVM — meaningless on a kiosk |
+
+**`udisks2` is deliberately left enabled** so USB drives still mount for
+recovery work.
 
 Files: `pi-config/usr/local/bin/bt-pair.sh`,
 `pi-config/usr/local/bin/bt-one-radio.sh`,
