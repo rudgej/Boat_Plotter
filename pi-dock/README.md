@@ -326,6 +326,36 @@ sudo systemctl start bluetooth
    though nothing was still appearing. Waiting for the adapter objects with a
    short bounded loop is faster and cannot stall the boot.
 
+### `bt-hifi.service` — disabled (legacy leftover)
+
+`bt-hifi-connect.sh` is still on disk, but the unit is stopped and not enabled.
+It was written for the old Pi and sets `Environment=XDG_RUNTIME_DIR=/run/user/1000`
+while the kiosk user here is **1001**, so `pactl` could never reach PipeWire: it
+failed, `Restart=on-failure` retried every 15 s, and it logged `no audio sink`
+**987 times in a day** without ever doing anything. The speaker reconnects by
+itself, so it added nothing. Re-enable with `sudo systemctl enable --now bt-hifi`
+(and fix the UID first).
+
+### Wi-Fi and Bluetooth share one chip — known limitation
+
+`wlp3s0` (Wi-Fi) and `hci0` (Bluetooth) are the same **RTL8821CE**. While A2DP is
+streaming, the Wi-Fi driver logs `rtw_8821ce … failed to send h2c command` about
+once a second, and audio can glitch. Measured across boots: **0** such errors in
+a 2h45m boot with no speaker, **34,715** in a 5h boot with one. It is not caused
+by anything in the Bluetooth configuration, and there are no Bluetooth-side
+errors at all — the link stays `Connected`.
+
+Two mitigations, both measured:
+
+- `iw dev wlp3s0 set power_save off` removed a second, distinct fault —
+  `firmware failed to leave lps state` went from several a minute to **0**.
+  NetworkManager leaves `wifi.powersave` at `0 (default)` on the `wlp3s0`
+  profiles; set it to `2 (disable)` to make this survive a reboot.
+- The 2.4 GHz overlap is the root of the coexistence trouble. `Bossy Wi-Fi` is
+  also broadcast on 5 GHz (ch40/5200), which would remove the overlap entirely.
+  Left as-is deliberately: the boat is a hard Wi-Fi environment and 2.4 GHz is
+  what works there.
+
 Files: `pi-config/usr/local/bin/bt-pair.sh`,
 `pi-config/usr/local/bin/bt-one-radio.sh`,
 `pi-config/etc/systemd/system/bt-one-radio.service`,
@@ -379,6 +409,12 @@ handlers for the status paths and stores the values. Enabled via
 ---
 
 ## 9. Cockpit lighting automation (dusk → 23:00)
+
+> **Disabled on the box (2026-11-23).** `cockpit-light.service` is stopped and
+> not enabled. It is not wanted at present and it filled the journal with Signal K
+> login retries at every boot. The code is unchanged and still installed —
+> `sudo systemctl enable --now cockpit-light` brings it back exactly as described
+> below.
 
 A Python daemon (`cockpit-light.py`, systemd `cockpit-light.service`) turns the
 cockpit light ON at **sunset** and OFF at **23:00 local time**.
