@@ -253,10 +253,28 @@ the BoatNetwork access point). BlueZ's default controller changed after a
 `systemctl restart bluetooth`, and pairing history is per-radio:
 `/var/lib/bluetooth/<controller>/<device>`.
 
-`bt-one-radio.service` runs `bt-one-radio.sh` at boot and settles it: any
-controller whose address has the locally-administered bit set (a generated
-address, i.e. the dongle) is powered off, and the one with a hardware address is
-made pairable. Its Wi-Fi is left alone — `BoatNetwork` stays `activated`.
+`bt-one-radio.service` runs `bt-one-radio.sh` at boot: any controller whose
+address has the locally-administered bit set (a generated address, i.e. the
+dongle) is powered off, and the one with a hardware address is made pairable.
+Its Wi-Fi is left alone — `BoatNetwork` stays `activated`.
+
+Powering the dongle's radio off turned out not to be enough. The service ran and
+logged the power-off at `16:55:55`, and by the time it was next looked at that
+radio was powered again — BlueZ brings adapters up as they finish registering,
+about 40 s into boot. Not existing is the only state that stays set, so
+`80-aic8800-no-bluetooth.rules` deauthorises the stick's two Bluetooth
+interfaces (`class e0/01/01`). `btusb` never binds and there is no second
+controller at all:
+
+```text
+1-8:1.0  e0/01/01  authorized 0     (Bluetooth, blocked)
+1-8:1.1  e0/01/01  authorized 0     (Bluetooth, blocked)
+1-8:1.2  ff/ff/ff  authorized 1     (Wi-Fi, aic8800_fdrv — the AP, untouched)
+```
+
+Check it with `busctl tree org.bluez --list | grep hci` (one adapter) and
+`nmcli -t -f NAME,STATE con show --active | grep BoatNetwork` (still
+`activated`). The script keeps its power-off branch as a fallback.
 
 The speaker pairing did not persist, and the fault was on the adapter, not the
 speaker:
@@ -310,7 +328,8 @@ sudo systemctl start bluetooth
 
 Files: `pi-config/usr/local/bin/bt-pair.sh`,
 `pi-config/usr/local/bin/bt-one-radio.sh`,
-`pi-config/etc/systemd/system/bt-one-radio.service`.
+`pi-config/etc/systemd/system/bt-one-radio.service`,
+`pi-config/etc/udev/rules.d/80-aic8800-no-bluetooth.rules`.
 
 ---
 

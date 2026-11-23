@@ -1,0 +1,20 @@
+# The AIC8800D80 USB stick (368b:8d83) provides the BoatNetwork access point.
+#
+# The stick exposes three USB interfaces: two Bluetooth (class e0/01/01) and one
+# vendor-specific Wi-Fi interface (ff/ff/ff) driven by aic8800_fdrv. Only the
+# Wi-Fi is wanted. The Bluetooth radio creates a second controller, which BlueZ
+# may pick as the default, and its address is generated (locally administered),
+# so bonds stored against it cannot survive an address change.
+#
+# Deauthorising just those two interfaces stops btusb binding, so the second
+# radio never appears at all. The Wi-Fi interface does not match this rule.
+#
+# A oneshot service that powers the radio off after boot was not enough: BlueZ
+# powered it back on about 40 s later. Not existing is the only reliable state.
+#
+# Verify with:  busctl tree org.bluez --list | grep hci
+#               nmcli -t -f NAME,DEVICE,STATE con show --active | grep BoatNetwork
+#
+ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", \
+  ATTRS{idVendor}=="368b", ATTRS{idProduct}=="8d83", \
+  ATTR{bInterfaceClass}=="e0", ATTR{authorized}="0"
