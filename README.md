@@ -236,3 +236,13 @@ Read `MIGRATION.md`. It covers the OS layer, app install, Wi-Fi and AP setup, DN
 connections and security, the Shelly and engine-trends services, the manuals sync, Seakeeper
 Ethernet, charts and remote access.
 
+Four packages are easy to miss because nothing fails loudly without them, and each breaks a
+feature that is otherwise working:
+
+| Package | Without it |
+|---|---|
+| `libspa-0.2-bluetooth` | no Bluetooth sink; the link fails with `br-connection-profile-unavailable` |
+| `pulseaudio-utils` | no `pactl`, so a stream already playing cannot be moved to the speaker |
+| `wlrctl` | the dock buttons cannot raise a window, so pressing one appears to do nothing (8 s of relaunching instead) |
+| `btmgmt` (`bluez` tools) | no way to read or set the adapter's bonding settings |
+
