@@ -1391,11 +1391,13 @@ Water level, generator temperature and the CYD now serve ArduinoOTA, but only
 while associated to the primary network the N100 hosts. On `BoatNetwork2` the
 port is not opened, so the fallback network is not a second update path.
 
-**One-time USB flash.** The partition table changed to two app slots:
-`min_spiffs.csv` on the 4 MB boards (water level, CYD — the live CYD app is
-1.3 MB, so it fits) and `app3M_fat9M_16MB.csv` on the 16 MB generator sender.
-NVS is at `0x9000` in every layout, so water calibration and probe roles survive.
-A device that predates the change has one app slot and cannot be updated OTA.
+**One-time USB flash.** Water level and generator temperature keep their stock
+partition tables; both already provide two OTA app slots, so only the firmware
+changes and NVS survives. The CYD's stock `huge_app.csv` has a single 3 MB slot,
+so it moves to `min_spiffs.csv` (two 1.9 MB slots; the live app is 1.3 MB). NVS
+is at `0x9000` in every layout, so calibration, probe roles and display settings
+survive. A device that predates this change still needs one USB flash to install
+the OTA-capable firmware.
 
 On the N100, once:
 
