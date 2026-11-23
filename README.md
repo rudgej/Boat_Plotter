@@ -112,6 +112,7 @@ HAT.
 | `tailscaled` | — | Remote access |
 | `holding-tank-dump` | — | Auto sewage discharge (see Boat automations) |
 | `cockpit-light` | — | Dusk-to-23:00 cockpit lighting |
+| `bt-one-radio` | — | Keeps the internal Bluetooth radio pairable and the Wi-Fi dongle's Bluetooth off |
 | `set-timezone.timer` | — | GPS-derived timezone, every 10 min |
 
 NMEA 2000 arrives via `can0`. NMEA 0183 arrives on three feeds configured in Signal K: the wind
