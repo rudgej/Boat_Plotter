@@ -1,0 +1,70 @@
+#!/bin/sh
+# gyro-sk - command the SeaKeeper through Signal K.
+#
+# This is the Signal K path: the seakeeper-signalk plugin runs the sequence over
+# the one MQTT connection it already holds, so commanding the gyro costs no
+# extra session on the unit. That matters because the unit allows four
+# connections and an open web page holds two of them.
+#
+#   gyro-sk on         spin up: low speed, power, wait for ready, stabilise, full
+#   gyro-sk off        stop stabilising, then power down
+#   gyro-sk sequence   what the plugin's sequence is doing
+#   gyro-sk status     current readings
+#
+# `on` returns at once - a cold spin-up takes about twenty minutes. Watch it
+# with `gyro-sk sequence`.
+#
+# The token lives in ~/.gyro-token, mode 600. It is a Signal K token and it does
+# not expire; it only becomes invalid if Signal K's signing secret changes (a
+# reinstall). Override the location with GYRO_TOKEN_FILE.
+#
+# For the direct path - no Signal K involved, no token needed at all - use the
+# `gyro` command instead. It needs the 4th and last MQTT slot, which is why this
+# wrapper exists.
+
+set -eu
+
+BASE=${GYRO_SK_URL:-http://localhost:3000/signalk/v1/api/vessels/self/propulsion/gyro}
+TOKEN_FILE=${GYRO_TOKEN_FILE:-$HOME/.gyro-token}
+
+usage() {
+    echo "usage: gyro-sk on|off|sequence|status" >&2
+    exit 2
+}
+
+[ $# -eq 1 ] || usage
+
+if [ ! -r "$TOKEN_FILE" ]; then
+    echo "no readable token at $TOKEN_FILE" >&2
+    echo "create it once with:  umask 077; printf '%s' \"\$TOKEN\" > ~/.gyro-token" >&2
+    exit 1
+fi
+
+TOKEN=$(cat "$TOKEN_FILE")
+
+case "$1" in
+on | off)
+    curl -sS -X PUT \
+        -H "Authorization: Bearer $TOKEN" \
+        -H 'Content-Type: application/json' \
+        -d "{\"value\":{\"state\":\"$1\"}}" \
+        -w '\n[%{http_code}]\n' \
+        "$BASE/control"
+    ;;
+sequence)
+    curl -sS --max-time 6 "$BASE/sequence"
+    echo
+    ;;
+status)
+    for path in powerEnabled stabilizeAvailable stabilizeEnabled targetRpm rpm; do
+        printf '%-20s' "$path"
+        value=$(curl -sS --max-time 6 "$BASE/$path" |
+            sed 's/.*"value":\([^,}]*\).*/\1/')
+        [ -n "$value" ] || value="-"
+        echo "$value"
+    done
+    ;;
+*)
+    usage
+    ;;
+esac
