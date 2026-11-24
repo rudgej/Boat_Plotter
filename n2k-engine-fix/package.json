@@ -1,0 +1,8 @@
+{
+  "name": "n2k-engine-fix",
+  "version": "1.0.0",
+  "description": "Corrects two NMEA 2000 engine ingest defects in Signal K: fuel pressure scaled 1000x too high, and 'not available' fields published as zero",
+  "main": "index.js",
+  "keywords": ["signalk-node-server-plugin"],
+  "license": "MIT"
+}

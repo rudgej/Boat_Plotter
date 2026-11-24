@@ -172,6 +172,12 @@ its own.
   time the N100 saw the real bus rather than a simulator. Device inventory by source address, full
   PGN table with rates, engine gateway data, what Signal K transmits back, and the known defects
   (fuel pressure ×1000, not-available reported as 0, truncated `127497`).
+- **`data-inventory.md`** — **the complete list of every value we actually have**: navigation,
+  route, wind, depth, both engines, electrical, tanks, alarms, plus the unit conversions, the
+  values that must not be trusted, and what is missing entirely (AIS, autopilot, rudder angle).
+  Start here when building a dashboard.
+- **`n2k-engine-fix/`** — local Signal K plugin written on 2026-11-24 to correct the
+  engine-data defects. See its notes in `data-inventory.md` §13.
 - **`pi-dock/`** — the live plotter config: Signal K settings, KIP dashboards, dock launcher,
   BoatNetwork AP, Shelly automation, Bluetooth speaker pairing, watchdogs. Full docs in
   **`pi-dock/README.md`**.
