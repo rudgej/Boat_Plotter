@@ -21,7 +21,17 @@
  *   propulsion.gyro.stabilizeEnabled    bool
  *   propulsion.gyro.targetRpm           rpm   - flywheel_crt_selected_speed
  *   propulsion.gyro.rpm                 rpm   - flywheel_speed (actual)
+ *   propulsion.gyro.sequence            string - what the sequence is doing
  *   notifications.seakeeper             {state, message}
+ *
+ * Commands (PUT propulsion.gyro.control):
+ *   {"state":"on"}   low speed if cold, power, wait for ready, stabilise, full
+ *   {"state":"off"}  stop stabilising, then power down
+ *
+ * Commands are published on the ONE connection this plugin already holds, so
+ * driving the gyro costs no extra session. The PUT returns immediately - a cold
+ * spin-up takes about 20 minutes - and progress is published as
+ * propulsion.gyro.sequence.
  */
 
 const PLUGIN_ID = 'seakeeper-signalk';
@@ -166,6 +176,169 @@ module.exports = function (app) {
     }
   }
 
+  // ---------------------------------------------------------------- sequence
+
+  let sequence = 'idle';
+  let sequenceRunning = false;
+  let stopping = false;
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Mixed types by design: stabilize_available is a JSON boolean when false,
+  // while the others are always numbers.
+  const on = (v) => v === true || v === 1 || v === '1';
+
+  function setSequence(state) {
+    sequence = state;
+    app.setPluginStatus(`sequence: ${state}`);
+    app.handleMessage(PLUGIN_ID, {
+      updates: [
+        {
+          $source: PLUGIN_ID,
+          values: [{ path: 'propulsion.gyro.sequence', value: state }]
+        }
+      ]
+    });
+  }
+
+  function send(payload) {
+    const cfg = app.__seakeeperCfg || DEFAULTS;
+    if (!client) {
+      throw new Error('not connected to the unit');
+    }
+    const body = JSON.stringify(payload);
+    app.debug(`publish ${body}`);
+    client.publish(`seakeeper/request/${cfg.instance}`, body, { qos: 0 });
+  }
+
+  // Commands are QoS 0, so nothing is confirmed by publishing. Every step is
+  // checked against the status stream instead. An alarm stops the sequence
+  // before stabilise is ever published.
+  async function waitFor(predicate, label, timeoutMs) {
+    const started = Date.now();
+    for (;;) {
+      if (stopping) {
+        throw new Error('plugin stopping');
+      }
+      const alarms = latest.alarm && latest.alarm.alarming_seekepers;
+      if (Array.isArray(alarms) && alarms.length) {
+        throw new Error(`alarm: ${JSON.stringify(alarms[0])}`);
+      }
+      if (predicate(latest.status)) {
+        return;
+      }
+      if (Date.now() - started > timeoutMs) {
+        throw new Error(`timeout waiting for ${label}`);
+      }
+      await sleep(500);
+    }
+  }
+
+  async function spinUp() {
+    const cfg = app.__seakeeperCfg || DEFAULTS;
+    const s = latest.status || {};
+
+    if (on(s.stabilize_enabled)) {
+      setSequence('already-stabilising');
+      return;
+    }
+
+    if (on(s.power_enabled)) {
+      // Already spinning. Commanding the low target now would pull it back down
+      // for no reason, so skip straight to waiting for readiness. This is the
+      // 8000 rpm case: there is nothing to ramp up from.
+      setSequence('already-running, waiting to be ready');
+    } else {
+      send({ flywheel_speed: 1 });
+      send({ power: 1 });
+      setSequence('spinning-up');
+      await waitFor(
+        (m) => m && on(m.power_enabled),
+        'power on',
+        30000
+      );
+      setSequence('waiting to be ready');
+    }
+
+    // The unit's own readiness signal - the SHIP button appearing. Not a speed
+    // threshold and not a fixed delay.
+    await waitFor(
+      (m) => m && on(m.stabilize_available),
+      'ready to stabilise',
+      (cfg.readyTimeoutSeconds || 3600) * 1000
+    );
+
+    send({ stabilize: 1 });
+    await waitFor(
+      (m) => m && on(m.stabilize_enabled),
+      'stabilising',
+      30000
+    );
+
+    // Done as soon as the high-speed target is selected. There is no reason to
+    // watch it reach 9700 - the unit does that on its own.
+    send({ flywheel_speed: 0 });
+    setSequence('done');
+  }
+
+  async function spinDown() {
+    const s = latest.status || {};
+
+    if (on(s.stabilize_enabled)) {
+      send({ stabilize: 0 });
+      await waitFor(
+        (m) => m && !on(m.stabilize_enabled),
+        'stabilise off',
+        30000
+      );
+    }
+
+    if (on(s.power_enabled)) {
+      send({ power: 0 });
+      // The flywheel coasts for a long time; waiting for it is not useful.
+    }
+
+    setSequence('off');
+  }
+
+  async function runSequence(action) {
+    if (sequenceRunning) {
+      return `already running (${sequence})`;
+    }
+    sequenceRunning = true;
+    try {
+      if (action === 'on') {
+        await spinUp();
+      } else {
+        await spinDown();
+      }
+      return null;
+    } catch (e) {
+      setSequence(`failed: ${e.message}`);
+      return e.message;
+    } finally {
+      sequenceRunning = false;
+    }
+  }
+
+  function readAction(value) {
+    if (value && typeof value === 'object') {
+      if (typeof value.state === 'string') {
+        return value.state.toLowerCase();
+      }
+      if (typeof value.on === 'boolean') {
+        return value.on ? 'on' : 'off';
+      }
+      if (value.value && typeof value.value === 'object') {
+        return readAction(value.value);
+      }
+    }
+    if (typeof value === 'string') {
+      return value.toLowerCase();
+    }
+    return null;
+  }
+
   const plugin = {
     id: PLUGIN_ID,
     name: 'SeaKeeper',
@@ -198,6 +371,15 @@ module.exports = function (app) {
           type: 'number',
           title: 'Stop publishing after (seconds of silence)',
           default: DEFAULTS.staleSeconds
+        },
+        readyTimeoutSeconds: {
+          type: 'number',
+          title: 'Give up waiting to become ready after (seconds)',
+          description:
+            'A cold unit takes about 20 minutes to report it can stabilise. ' +
+            'The spin-up stops waiting after this and reports failure rather ' +
+            'than engaging stabilisation on a unit that never became ready.',
+          default: 3600
         }
       }
     },
@@ -253,9 +435,47 @@ module.exports = function (app) {
       const period = Math.max(250, Math.round(1000 / (cfg.rateHz || 1)));
       timer = setInterval(publish, period);
       app.setPluginStatus(`starting, publishing at ${cfg.rateHz || 1} Hz`);
+
+      // Publish the sequence state up front so the path always exists. Without
+      // this a reader cannot tell "idle" from "path not implemented", and the
+      // first thing an automation does is read it.
+      setSequence('idle');
+
+      // Commands go out on the connection this plugin already holds, so driving
+      // the gyro costs no extra session. The PUT returns at once: a cold
+      // spin-up takes about 20 minutes and no HTTP client waits that long.
+      if (typeof app.registerPutHandler === 'function') {
+        app.registerPutHandler(
+          'vessels.self',
+          'propulsion.gyro.control',
+          (context, path, value, callback) => {
+            const action = readAction(value);
+            if (action !== 'on' && action !== 'off') {
+              callback({
+                state: 'COMPLETED',
+                statusCode: 400,
+                message: 'expected {"state":"on"} or {"state":"off"}'
+              });
+              return;
+            }
+            runSequence(action).then((err) => {
+              if (err) {
+                app.setPluginError(`sequence: ${err}`);
+              }
+            });
+            callback({ state: 'COMPLETED', statusCode: 200 });
+          },
+          PLUGIN_ID
+        );
+      } else {
+        app.setPluginError(
+          'registerPutHandler is unavailable - too old a signalk-server'
+        );
+      }
     },
 
     stop: function () {
+      stopping = true;
       if (timer) {
         clearInterval(timer);
         timer = null;
