@@ -464,22 +464,26 @@ module.exports = function (app) {
         app.registerPutHandler(
           'vessels.self',
           'propulsion.gyro.control',
-          (context, path, value, callback) => {
+          // Signal K uses the handler's RETURN VALUE as the reply, and also
+          // calls any callback it was handed - so returning undefined makes it
+          // read .state off nothing and answer 500. Return the reply, and return
+          // it immediately: the sequence runs in the background because a cold
+          // spin-up takes twenty minutes and no HTTP client waits that long.
+          (context, path, value) => {
             const action = readAction(value);
             if (action !== 'on' && action !== 'off') {
-              callback({
+              return {
                 state: 'COMPLETED',
                 statusCode: 400,
-                message: 'expected {"state":"on"} or {"state":"off"}'
-              });
-              return;
+                message: 'expected {"value":{"state":"on"}} or "off"'
+              };
             }
             runSequence(action).then((err) => {
               if (err) {
                 app.setPluginError(`sequence: ${err}`);
               }
             });
-            callback({ state: 'COMPLETED', statusCode: 200 });
+            return { state: 'COMPLETED', statusCode: 200 };
           },
           PLUGIN_ID
         );
