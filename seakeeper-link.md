@@ -38,6 +38,23 @@ MQTT publish to a single topic. There is no REST API.
   30+ s and the UI worked normally once reachable. Cause not established —
   see §9.
 
+### 2.1 Connector and product identity
+
+The interface unit is a **SeaKeeper 5" Touch Display** — *not* a ConnectBox,
+which is a separate product SeaKeeper sells. The distinction matters: the
+vendor's wiring and setup procedures differ between the two, and several
+ConnectBox steps do **not** apply to us.
+
+- The unit-side port is **M12, male, straight, D-coded**, not RJ45. The RJ45
+  end is on the *Garmin* side. A stock patch lead will not fit.
+- Garmin-side cables: **P/N 20373** (GMN, RJ45, 2 m). **P/N 20617** is the
+  9-pin BlueNet variant for 9000-series MFDs only — not used here.
+- Extensions that plug into the back of the display: **P/N 30330** (10 m),
+  **P/N 30355** (25 m).
+
+Source: SeaKeeper Technical Bulletin *Garmin and SeaKeeper Compatibility*,
+doc **90478-11**, 23 Oct 2024.
+
 ---
 
 ## 3. Addressing
@@ -110,6 +127,28 @@ what it *advertises*.
 browser that can reach the page works, and any MQTT client that can reach port
 9001 works.
 
+### 4.2 Vendor-stated limits (TB 90478-11)
+
+Two facts from SeaKeeper's own compatibility bulletin that constrain how many
+viewers we can have:
+
+- **"The Seakeeper App can only populate on up to two MFDs simultaneously."**
+  This is consistent with our measured `CFG_MQTT_MAX_CONNS = 2` in the relay.
+  Mind the arithmetic in `seakeeper-verified-2026-11-22.md`: one browser page
+  opens **two** MQTT clients (hosting + displaying), so a *single* viewer
+  already saturates a limit of 2. A second simultaneous viewer therefore needs
+  the relay limit raised, and may still exceed what the unit itself tolerates.
+- **There is no NMEA 2000 anywhere in the bulletin.** SeaKeeper's own
+  integration with Garmin is a web app over Ethernet plus mDNS. There is no
+  N2K path to build; the MQTT relay is the only route to this data.
+
+**ConnectBox-only — does not apply to our unit.** The bulletin's DHCP-server
+setup (Ethernet button, spool-bar LEDs strobing right-to-left, 10-second press
+to toggle the server) exists only on the ConnectBox. The 5" display has no such
+button; its setup is Settings (gears) → MFD dropdown → **Garmin** → cycle DC
+power. Our "no DHCP server on this cable" observation (§3) is therefore an
+empirical finding, not something the bulletin guarantees.
+
 > **Security note.** Commands on `seakeeper/request/1` were accepted with no
 > credentials of any kind — `{"power":1}` worked on the first try. Physical
 > access to that cable is therefore full control of the gyro, including starting
@@ -137,8 +176,13 @@ The page sets `var port = "9001"` and connects to `ws://<host>:9001/mqtt`.
 | `seakeeper/alarm` | subscribe | alarms |
 | `seakeeper/alarmhistory/…` | subscribe | alarm history |
 
-The trailing `1` is the **Seakeeper instance number**, taken from
-`seakeeper/gyros`. A multi-unit boat would use `/2`, `/3`…
+The trailing `1` is the **Seakeeper ID** — a configured number, not a
+connection instance index. It is **set on the 5" Touch Display**: hold the
+Settings button for 5 s, then use the Seakeeper ID dropdown (TB 90478-11 p.6).
+A single-unit boat **must** be ID 1; further units take 2, 3… and the topics
+follow. A ConnectBox auto-assigns its ID instead, so on that product the number
+is not ours to set. `seakeeper/gyros` reports the value as
+`seakeeper_instance`.
 
 ### 5.2 Commands — publish to `seakeeper/request/1`, QoS 0
 
