@@ -94,6 +94,35 @@ taking the plotter's destination.
 True wind is computed using **GPS SOG**, never the paddle wheel. Displayed correctly on the
 Garmin, which receives `130306` Reference 2 (Apparent) from Signal K at 2 Hz.
 
+### Relative angle vs compass bearing — the CYD trap
+
+Two different things wear the label "wind direction", and mixing them up is the easiest mistake
+to make on this boat.
+
+Worked example: **boat heading 270°, stopped, wind from the bow at 5 kt.**
+
+| Where | Shows | What it means |
+|---|---|---|
+| Signal K `angleApparent` | `0` rad | from the bow — **relative** |
+| Signal K `directionTrue` | `270°` (4.712 rad) | from the west — **compass** |
+| Garmin apparent page | `0°`, 5 kt | relative |
+| Garmin true page | `270°`, 5 kt | compass, computed on the Garmin |
+| **CYD connected to Signal K** | `270°`, 5 kt | compass — correct, it is fed `directionTrue` |
+| **CYD in local mode** | `000°`, 5 kt | **relative only** — `000` means *dead ahead*, **not** north |
+
+`directionTrue = headingTrue + angleApparent`. With the wind dead ahead the two are equal, which
+is why direction and heading matched exactly in the 2026-11-24 capture.
+
+**The CYD only reports a relative angle when it has no heading to work from** — that is, in local
+mode when the N100 is unavailable and it is running on the fallback AP. Connected to Signal K it
+receives `directionTrue` and displays a proper compass bearing. So a `000` on the CYD is a
+symptom of local mode, and should be read as "on the bow", never as a compass direction.
+
+When the boat moves, the CYD's relative reading stays relative (still correct), while Signal K
+recalculates `directionTrue` using SOG. One approximation: ground wind subtracts SOG along the
+**heading** axis rather than the COG axis, so it drifts slightly with strong current or leeway —
+the honest limit of having no working paddle wheel.
+
 ---
 
 ## 5. Environment — depth and temperature
