@@ -288,39 +288,52 @@ the `seakeeper-signalk` plugin in this repo (`seakeeper-link.md` has the full pr
 `NO-CARRIER` — the SeaKeeper Ethernet link is not plugged in, so no `seakeeper-signalk` source
 exists in the model.
 
-### 11.1 Every field in the status message
+### 11.1 Every field in the status message — all 34
 
-Subscribe to `seakeeper/status/1` on `ws://192.168.0.2:9001/mqtt`. Complete payload, all 34
-fields:
+Subscribe to `seakeeper/status/1` on `ws://192.168.0.2:9001/mqtt`. This is the complete payload,
+one row per field, in alphabetical order as received. Sample values are from a real capture.
 
-| Field | Type | Meaning |
-|---|---|---|
-| `flywheel_speed` | number | **Actual rotor rpm**, live |
-| `flywheel_speed_percent` | number | 0–100, drives the speed ring |
-| `flywheel_min_speed` / `flywheel_max_speed` | number | 7600 / 9700 on this unit |
-| `flywheel_crt_selected_speed` | number | Selector: 0 = max, 1 = min |
-| `stabilize_available` | bool | Gates the Stabilise button — false until at speed |
-| `stabilize_enabled` | 0/1 | Stabilisation actually engaged |
-| `power_available` / `power_enabled` | 0/1 | Power control state |
-| `boat_roll_angle` | float | **Degrees** — the boat's roll, the number worth plotting |
-| `gyro_angle` | float | Degrees |
-| `roll_angle_flipped` | bool | Display inversion flag |
-| `battery_voltage` | float | V (12.4 V nominal here) |
-| `battery_displayed` / `battery_segments` | number | Battery gauge rendering |
-| `drive_current` | float | A |
-| `drive_temperature` | **string** | e.g. `"29.0° C"` — parse, do not treat as a number |
-| `enclosure_pressure` | **string** | |
-| `sea_hours` | number | Hours at sea (1311) |
-| `run_hours` | number | Total run hours (1434) |
-| `serial` | string | `"60055"` |
-| `model` | string | `"6"` |
-| `seakeeper_instance` | number | Instance id |
-| `gcm`, `imu`, `tcml`, `display`, `drive1`, `drive2` | string | Firmware/hardware versions |
-| `language` | number | |
-| `graph_is_dial_left` | 0/1 | Display orientation |
-| `progress_bar_available` | bool | |
-| `progress_bar_percentage` | number | |
-| `active_alarm_history` | number | Alarm history count |
+| # | Field | Type | Sample | Meaning |
+|---|---|---|---|---|
+| 1 | `active_alarm_history` | int | `1` | Number of alarms in the history |
+| 2 | `battery_displayed` | int | `0` | Battery reading currently displayed |
+| 3 | `battery_segments` | int | `31` | Bar segments lit on the battery gauge |
+| 4 | `battery_voltage` | float | `12.4` | Battery voltage, V |
+| 5 | `boat_roll_angle` | float | `-0.0054` | **Boat roll, degrees** — the value worth plotting |
+| 6 | `display` | string | `"7.40.1.2332"` | Display firmware version |
+| 7 | `drive1` | string | `"20020004"` | Drive unit identifier |
+| 8 | `drive2` | string | `"2.02 / 0"` | Drive unit firmware version |
+| 9 | `drive_current` | float | `0.37` | Drive motor current, A |
+| 10 | `drive_temperature` | **string** | `"29.0° C"` | Drive temperature — parse the number out |
+| 11 | `enclosure_pressure` | **string** | `"12"` | Enclosure pressure — numeric value sent as text |
+| 12 | `flywheel_crt_selected_speed` | int | `0` | Speed selector: **0 = max, 1 = min** |
+| 13 | `flywheel_max_speed` | int | `9700` | Maximum rotor speed, rpm |
+| 14 | `flywheel_min_speed` | int | `7600` | Minimum rotor speed, rpm |
+| 15 | `flywheel_speed` | int | `0` | **Actual rotor rpm**, live |
+| 16 | `flywheel_speed_percent` | int | `0` | 0–100, drives the speed ring |
+| 17 | `gcm` | string | `"10.82"` | Gyro control module firmware |
+| 18 | `graph_is_dial_left` | 0/1 | `1` | Display orientation flag |
+| 19 | `gyro_angle` | float | `17.70` | Gyro gimbal angle, degrees |
+| 20 | `imu` | string | `"2.54"` | IMU firmware version |
+| 21 | `language` | int | `0` | Display language code |
+| 22 | `model` | string | `"6"` | Seakeeper model (6) |
+| 23 | `power_available` | 0/1 | `1` | Power can be applied |
+| 24 | `power_enabled` | 0/1 | `0` | Power actually applied |
+| 25 | `progress_bar_available` | bool | `false` | A progress bar is being shown |
+| 26 | `progress_bar_percentage` | int | `0` | Progress 0–100 |
+| 27 | `roll_angle_flipped` | bool | `false` | Roll display inverted |
+| 28 | `run_hours` | int | `1434` | Total run hours |
+| 29 | `sea_hours` | int | `1311` | Hours at sea |
+| 30 | `seakeeper_instance` | int | `1` | Instance identifier |
+| 31 | `serial` | string | `"60055"` | Unit serial number |
+| 32 | `stabilize_available` | bool | `false` | **Gates the Stabilise button** — false until at speed |
+| 33 | `stabilize_enabled` | 0/1 | `0` | Stabilisation actually engaged |
+| 34 | `tcml` | string | `"2993"` | TCML firmware version |
+
+**Type traps:** `drive_temperature` and `enclosure_pressure` are **strings**, not numbers.
+`battery_voltage`, `boat_roll_angle`, `gyro_angle` and `drive_current` are floats. Parse
+defensively.
+
 
 ### 11.2 What the bridge publishes into Signal K
 
