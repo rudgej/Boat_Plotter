@@ -119,6 +119,31 @@ NMEA 2000 arrives via `can0`. NMEA 0183 arrives on three feeds configured in Sig
 sensor over UDP 10110, and two serial ports at 4800 and 38400 baud. **Signal K owns both serial
 ports**; AvNav reads everything through Signal K rather than opening the ports itself.
 
+### What data we actually have
+
+Verified live on the bus **2026-11-24**. Full detail, every path and unit, in
+**`data-inventory.md`**; the wire itself (devices, PGNs, rates, defects) is in
+**`nmea2000-live-bus.md`**.
+
+| Domain | Working | Not available |
+|---|---|---|
+| **Navigation** | Position, SOG, COG, heading, variation, sats, DOPs (10 Hz) | — |
+| **Route** | Distance to waypoint, bearing, **XTE**, ETA, TTG, VMG | Whole-route totals (no N2K PGN exists) |
+| **Wind** | Apparent from the masthead; true computed from GPS SOG | — |
+| **Depth** | Transducer depth, 1 Hz | — |
+| **Engines ×2** | rpm, oil pressure, oil & coolant temperature, alternator (one engine), fuel rate, hours, boost | Load, torque, trim, coolant pressure, gear |
+| **Electrical** | Battery voltage, Shelly switch | — |
+| **Tanks** | Fresh water ~81 % | Fuel level (no sensor) |
+| **Alarms** | 24 gateway fault flags + 4 Signal K thresholds, per engine | — |
+| **AIS** | — | Not on the bus; believed 0183 |
+| **Autopilot / rudder** | — | Not on the bus; believed 0183 |
+
+The two 0183 serial ports have received **zero bytes since boot**. `rs485-2` is already
+configured at **38400 — the AIS rate** — so the box is prepared for an AIS feed. Wiring either
+input would add rudder angle (`$RSA`), autopilot steering (`$APB`) and AIS targets (`!AIVDM`) with
+no software change.
+
+
 ### Firmware updates (OTA)
 
 The sensor firmware is updated from this box, over `BoatNetwork` only: each
@@ -167,7 +192,9 @@ its own.
 - **`MIGRATION.md`** — the full rebuild plan and the record of what was done. Start here.
 - **`seakeeper-link.md`** — the SeaKeeper Ethernet link, web UI and MQTT interface, measured on
   the boat 2026-11-21. The unit answers on `192.168.0.2`, not the `172.16.102.1` that
-  `MIGRATION.md` §18 and `seakeeper-esp/SETUP.md` still describe.
+  `MIGRATION.md` §18 and `seakeeper-esp/SETUP.md` still describe. Holds the full protocol: all
+  **34 status fields**, the **6 commands** (`power`, `flywheel_speed`, `stabilize`) and the type
+  traps (`drive_temperature` is a string). `data-inventory.md` §11 summarises it.
 - **`nmea2000-live-bus.md`** — the NMEA 2000 backbone measured on the boat 2026-11-24, the first
   time the N100 saw the real bus rather than a simulator. Device inventory by source address, full
   PGN table with rates, engine gateway data, what Signal K transmits back, and the known defects
@@ -178,6 +205,10 @@ its own.
   Start here when building a dashboard.
 - **`n2k-engine-fix/`** — local Signal K plugin written on 2026-11-24 to correct the
   engine-data defects. See its notes in `data-inventory.md` §14.
+- **`tools/seakeeper-mqtt-test.js`** — one-command headless check of the SeaKeeper's
+  MQTT-over-WebSocket broker from the box. Subscribe-only by default; `--publish` acts on the
+  gyro. Written to retest the CONNACK failure after the unit's concurrent-session limit was
+  raised. Needs `enp2s0` connected.
 - **`pi-dock/`** — the live plotter config: Signal K settings, KIP dashboards, dock launcher,
   BoatNetwork AP, Shelly automation, Bluetooth speaker pairing, watchdogs. Full docs in
   **`pi-dock/README.md`**.
