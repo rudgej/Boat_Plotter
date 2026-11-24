@@ -162,6 +162,21 @@ ssh pi@bossy.local '~/ota/ota_push.sh ~/ota/firmware.bin bossy-ota <address>'
 | Wind | `192.168.10.171` | `fw` in `/status` (from its next flash) |
 | Generator temperature | `192.168.10.172` | `fw` in `/status` |
 | CYD display | `192.168.10.154` | serial boot banner only |
+| SeaKeeper relay (bridge) | `192.168.10.50` | `sha` in `/status` on `:8080` |
+
+`ota_push.sh` now covers two transports, chosen per host rather than configured: it
+asks each one for `/status` on `:8080` and takes the HTTP path when it answers. The
+Arduino nodes use espota over UDP 3232; the bridge is ESP-IDF, where ArduinoOTA does
+not exist, so it takes an HTTP POST on `:8080` instead (port 80 is relayed to the
+SeaKeeper). One command still does the fleet:
+
+```bash
+ssh pi@bossy.local '~/ota/ota_push.sh ~/ota/firmware.bin bossy-ota 192.168.10.191 192.168.10.50'
+```
+
+The bridge reports an ELF `sha`, not `fw`: `fw` and `built` do not change on an
+incremental rebuild, so they cannot tell two builds apart. A successful push
+alternates the running slot between `ota_0` and `ota_1`.
 
 Read the version back — `curl -s http://192.168.10.191/status | tr ',' '\n' | grep fw`
 — because the uploader reporting success does not mean the new image is running.
@@ -208,7 +223,17 @@ its own.
 - **`tools/seakeeper-mqtt-test.js`** — one-command headless check of the SeaKeeper's
   MQTT-over-WebSocket broker from the box. Subscribe-only by default; `--publish` acts on the
   gyro. Written to retest the CONNACK failure after the unit's concurrent-session limit was
-  raised. Needs `enp2s0` connected.
+  raised.
+- **`tools/gyro`** — brings the gyro up in the unit's own order: low speed, power, wait for
+  `stabilizeAvailable`, stabilise, then full speed. `gyro on|off|status|log`. Talks straight to
+  the unit's MQTT broker, which has **no authentication at all**, so it needs no token — but it
+  takes the fourth and last of the unit's four MQTT slots (`gyro on` retries, because a slot is
+  often still held by an abandoned connection). Returns at once: a cold spin-up takes about 20
+  minutes, so watch it with `gyro status` or `gyro log`.
+- **`tools/gyro-sk`** — the same command through Signal K, run by the `seakeeper-signalk` plugin
+  over the one MQTT connection it already holds, so it costs no extra slot. Reads its token from
+  `~/.gyro-token` (mode 600). Two commands exist because the two paths fail differently: if
+  Signal K is down `gyro` still works; if all four slots are taken `gyro-sk` still works.
 - **`pi-dock/`** — the live plotter config: Signal K settings, KIP dashboards, dock launcher,
   BoatNetwork AP, Shelly automation, Bluetooth speaker pairing, watchdogs. Full docs in
   **`pi-dock/README.md`**.
@@ -228,7 +253,11 @@ its own.
   tool — see below.
 - **`seakeeper-signalk/`** — Signal K plugin that reads the gyro over MQTT and publishes roll,
   on/off, stabilise-available, stabilising, target rpm, actual rpm and an alarm flag at 1 Hz,
-  using a single MQTT connection. See its `README.md` for the path mapping.
+  using a single MQTT connection. It also **runs the spin-up sequence itself** on
+  `PUT propulsion.gyro.control` — `{"value":{"state":"on"}}` or a plain boolean, which is what
+  a dashboard switch sends — reporting progress on `propulsion.gyro.sequence`. Doing it inside
+  the plugin is deliberate: it uses the connection already open, so commanding the gyro takes
+  no extra session. See its `README.md` for the path mapping and the PUT contract.
   The bridge firmware itself now lives in
   [esp-seakeeper-relay](https://github.com/rudgej/esp-seakeeper-relay) — PlatformIO/ESP-IDF,
   replaces the off-the-shelf router because that did destination-only NAT and left the unit

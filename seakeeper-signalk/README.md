@@ -17,9 +17,15 @@ Measured on the boat: 1.0 Hz exactly, values arriving with
 | `propulsion.gyro.powerEnabled` | `power_enabled` | boolean |
 | `propulsion.gyro.stabilizeAvailable` | `stabilize_available` | boolean |
 | `propulsion.gyro.stabilizeEnabled` | `stabilize_enabled` | boolean |
-| `propulsion.gyro.targetRpm` | `flywheel_crt_selected_speed` | rpm |
+| `propulsion.gyro.targetRpm` | `flywheel_crt_selected_speed` | **selector, `0` or `1`** |
 | `propulsion.gyro.rpm` | `flywheel_speed` | rpm |
+| `propulsion.gyro.control` | `stabilize_enabled` | boolean, read and write |
+| `propulsion.gyro.sequence` | — | string, the command sequence's state |
 | `notifications.seakeeper` | `alarming_seekepers` | `normal` / `alarm` |
+
+`targetRpm` is misnamed by history: the unit offers only two speed targets, 7600
+and 9700, encoded as `1` and `0`. So this path carries the *selector*, not a
+speed. A gauge expecting 9700 will read `0`.
 
 `navigation.attitude.roll` and `propulsion.gyro.revolutions` are the two paths
 with a Signal K convention behind them; the rest are ours. Roll follows the
@@ -30,6 +36,51 @@ wrong unit.
 
 The alarm notification is deliberately a boolean-ish: `normal` or `alarm`, with
 the count in the message. Which alarm it is does not matter for control.
+
+## Commands
+
+The plugin accepts `PUT propulsion.gyro.control` and runs the sequence itself, on
+the connection it already holds — so commanding the gyro costs no extra MQTT
+session. That matters: the unit allows four connections and its own web page
+holds two.
+
+```sh
+curl -X PUT -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"value":{"state":"on"}}' \
+  http://localhost:3000/signalk/v1/api/vessels/self/propulsion/gyro/control
+```
+
+`on` runs: low speed, power, wait for `stabilizeAvailable`, stabilise, then
+select full speed. `off` stops stabilising, then powers down.
+
+The body **must** be wrapped in `value`. Signal K answers `input is missing a
+value` and never reaches a handler otherwise. The value itself can be
+`{"state":"on"}`, `{"on":true}`, `"on"`, `true`, `1`, or KIP's nested
+`{value: 1}` — all accepted, because a dashboard switch does not send what a
+hand-written curl does.
+
+The PUT returns immediately; a cold spin-up takes about twenty minutes. Progress
+is published on `propulsion.gyro.sequence`:
+
+| Value | Meaning |
+|---|---|
+| `idle` | nothing running; published at startup so the path always exists |
+| `spinning-up` | powering on from cold |
+| `waiting to be ready` | waiting for `stabilizeAvailable` |
+| `already-running, waiting to be ready` | was already spinning, so low speed was skipped |
+| `already-stabilising` | nothing to do |
+| `done` | stabilising, full-speed target selected |
+| `off` | stabilisation off, powered down |
+| `failed: …` | stopped; an alarm or a timeout ended it |
+
+The order is the unit's, not ours: it refuses to stabilise until it reports
+`stabilizeAvailable`, so that is waited for rather than inferred from an rpm
+threshold or a fixed delay. An alarm aborts before `stabilize` is ever published.
+
+Low speed is commanded only when the unit is below its low target, so a gyro
+already at 8000 rpm is not dragged down to 7600 for nothing; if it is already
+stabilising, the sequence only asks for full speed. `readyTimeoutSeconds`
+(default 3600) bounds the wait.
 
 ## Connection budget
 
@@ -95,11 +146,15 @@ one needs an admin approval step. A plugin writes deltas in-process with
 service to supervise. This matches how the rest of this repository talks to
 Signal K.
 
-## Path registration note
+## Path registration
 
-Signal K rejects a `PUT` to a path no provider has registered, which is why
-`enginetrends-status` exists. That does not apply here — this plugin *emits*
-values rather than accepting them, so no registration step is needed.
+Signal K rejects a `PUT` to a path no provider has registered. This plugin
+registers one for `propulsion.gyro.control`, which is why Signal K reports
+`supportsPut: true` on that path.
+
+It also publishes a value there — the stabilising state — so a dashboard switch
+bound to it shows whether the gyro is running instead of sitting blank, and
+toggling that same path drives the sequence. One path, read and write.
 
 The protocol this talks to is documented in
 [`esp-seakeeper-relay/docs/seakeeper-protocol.md`](https://github.com/rudgej/esp-seakeeper-relay/blob/main/docs/seakeeper-protocol.md).
