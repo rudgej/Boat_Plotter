@@ -1,0 +1,418 @@
+#!/usr/bin/env python3
+"""gyro - SeaKeeper control from the command line.
+
+    gyro on         bring it up: low speed, power, wait for ready, stabilise, full
+    gyro off        stabilise off, then power off
+    gyro status     what it is doing right now
+    gyro log        follow the log of the most recent run
+
+`gyro on` returns immediately and does the work in the background, because on a
+cold unit it takes about 40 minutes. Use `gyro on --wait` to stay attached, and
+`gyro status` or `gyro log` to watch it.
+
+Why the order matters: the unit offers only two speed targets and the encoding
+is inverted - {"flywheel_speed":1} is minimum 7600 rpm, {"flywheel_speed":0} is
+maximum 9700. It also refuses to stabilise before it says it is ready, and
+readiness is its own signal (stabilize_available - the SHIP button appearing),
+not a speed threshold and not a timer. So:
+
+    1. flywheel_speed = 1     target low speed
+    2. power = 1              start spinning up
+    3. wait for stabilize_available
+    4. stabilize = 1
+    5. wait for stabilize_enabled
+    6. flywheel_speed = 0     now go to full speed
+
+Commands are QoS 0 (fire and forget), so every step is confirmed by watching the
+status stream change, never by assuming the publish landed.
+
+Types are as the unit sends them, not as the names suggest: stabilize_available
+is a JSON boolean (false) when not ready and the number 1 when it is, while
+stabilize_enabled and power_enabled are always numbers.
+
+The broker has no authentication: anything that can reach port 9001 has full
+control of the gyro. Four MQTT connections are allowed: an open web page holds
+2 and the Signal K plugin holds 1, so this takes the last one. A refused
+handshake usually means a slot is still held by an abandoned connection, which
+is why the connect retries rather than reporting a fault.
+"""
+
+import argparse
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+import warnings
+
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+
+try:
+    import paho.mqtt.client as mqtt
+except ImportError:
+    sys.exit('paho-mqtt is not installed:  sudo apt install python3-paho-mqtt')
+
+HOST = os.environ.get('GYRO_HOST', '192.168.0.2')
+PORT = int(os.environ.get('GYRO_PORT', '9001'))
+INSTANCE = os.environ.get('GYRO_INSTANCE', '1')
+
+REQUEST = 'seakeeper/request/%s' % INSTANCE
+STATUS = 'seakeeper/status/%s' % INSTANCE
+ALARM = 'seakeeper/alarm'
+
+HOME = os.path.expanduser('~')
+LOG_PATH = os.path.join(HOME, 'gyro.log')
+PID_PATH = os.path.join(HOME, '.gyro.pid')
+
+T0 = time.time()
+
+
+def log(msg):
+    print('[%5.1fs] %s' % (time.time() - T0, msg), flush=True)
+
+
+def ready(value):
+    """stabilize_available is False or 1; the others are always numbers."""
+    return value is True or value == 1 or value == '1'
+
+
+class Link:
+    """One MQTT connection to the unit's broker, over WebSocket."""
+
+    def __init__(self):
+        self.state = {}
+        self.alarm = None
+        self.client = None
+        self._last_flags = None
+
+    # -- connection --------------------------------------------------------
+
+    def preflight(self):
+        started = time.time()
+        try:
+            socket.create_connection((HOST, PORT), timeout=6).close()
+            log('preflight: %s:%s accepting (%.0f ms)'
+                % (HOST, PORT, (time.time() - started) * 1000))
+            return True
+        except OSError as e:
+            log('preflight: %s:%s %s' % (HOST, PORT, e))
+            return False
+
+    def connect(self, attempts=3, gap=10):
+        """Retry: a refused handshake is usually a slot held by an abandoned
+        connection, not a fault, and it clears by itself."""
+        last = None
+        for attempt in range(1, attempts + 1):
+            try:
+                self._connect_once()
+                return
+            except Exception as e:
+                last = e
+                log('connect attempt %d failed: %s' % (attempt, e))
+                self.close()
+                if attempt < attempts:
+                    log('retrying in %ds - a slot may still be held by an '
+                        'abandoned connection' % gap)
+                    time.sleep(gap)
+        raise RuntimeError('cannot connect: %s' % last)
+
+    def _connect_once(self):
+        self.state = {}
+        self.alarm = None
+        self._last_flags = None
+
+        self.client = mqtt.Client(client_id='gyro-cli', transport='websockets')
+        self.client.ws_set_options(path='/mqtt')
+        self.client.on_connect = self._on_connect
+        self.client.on_message = self._on_message
+        self.client.connect(HOST, PORT, 30)
+        self.client.loop_start()
+
+        deadline = time.time() + 10
+        while not self.state:
+            if self.alarm is not None:
+                raise RuntimeError('alarm on connect: %s' % self.alarm)
+            if time.time() > deadline:
+                raise RuntimeError('no status message within 10 s')
+            time.sleep(0.1)
+
+    def _on_connect(self, client, userdata, flags, rc):
+        if rc != 0:
+            raise RuntimeError('CONNACK rc=%s' % rc)
+        log('connected to ws://%s:%s/mqtt' % (HOST, PORT))
+        client.subscribe([(STATUS, 0), (ALARM, 0)])
+
+    def _on_message(self, client, userdata, msg):
+        try:
+            payload = json.loads(msg.payload.decode())
+        except ValueError:
+            return
+
+        if msg.topic == STATUS:
+            self.state = payload
+            # Log the discrete state, not every rpm tick: the ramp produces a
+            # message a second and would bury everything else.
+            flags = (payload.get('power_enabled'),
+                     payload.get('stabilize_available'),
+                     payload.get('stabilize_enabled'))
+            if flags != self._last_flags:
+                self._last_flags = flags
+                log('status %s' % self.describe())
+            return
+
+        if msg.topic == ALARM:
+            # The key really is misspelled in the unit's own payload.
+            alarms = payload.get('alarming_seekepers')
+            if isinstance(alarms, list) and alarms:
+                self.alarm = json.dumps(alarms[0])
+                log('ALARM - %s' % self.alarm)
+
+    def close(self):
+        if self.client:
+            try:
+                self.client.loop_stop()
+                self.client.disconnect()
+            except Exception:
+                pass
+            self.client = None
+
+    # -- state -------------------------------------------------------------
+
+    def describe(self):
+        s = self.state
+        if not s:
+            return 'no status yet'
+        return ('power=%s  stabilise_available=%s  stabilise_enabled=%s  '
+                'rpm=%s  target=%s' % (
+                    s.get('power_enabled'), s.get('stabilize_available'),
+                    s.get('stabilize_enabled'), s.get('flywheel_speed'),
+                    s.get('flywheel_crt_selected_speed')))
+
+    def send(self, payload):
+        body = json.dumps(payload, separators=(',', ':'))
+        log('publish %s -> %s' % (body, REQUEST))
+        self.client.publish(REQUEST, body, qos=0)
+
+    def wait_for(self, predicate, label, timeout, announce_every=30.0):
+        """Block until the unit's own status satisfies predicate.
+
+        Aborts on an alarm: stabilising a faulted unit is not something to
+        carry on through.
+        """
+        started = time.time()
+        last = 0.0
+        while True:
+            if self.alarm:
+                raise RuntimeError('aborted: alarm %s' % self.alarm)
+            if predicate(self.state):
+                log('%s: yes  (%s)' % (label, self.describe()))
+                return
+            elapsed = time.time() - started
+            if elapsed > timeout:
+                raise RuntimeError('timeout waiting for %s (%ds)'
+                                   % (label, int(timeout)))
+            if elapsed - last >= announce_every:
+                last = elapsed
+                log('waiting for %s  (%s)' % (label, self.describe()))
+            time.sleep(0.25)
+
+
+# --------------------------------------------------------------------- commands
+
+def cmd_on(link, wait_seconds):
+    s = link.state
+    log('current: %s' % link.describe())
+
+    if ready(s.get('stabilize_enabled')):
+        log('already stabilising - nothing to do')
+        return 0
+
+    # 1. Low speed first, so it spins up to the low target rather than racing
+    #    to maximum.
+    link.send({'flywheel_speed': 1})
+
+    # 2. Power on, unless it already is.
+    if ready(s.get('power_enabled')):
+        log('already powered - skipping power on')
+    else:
+        link.send({'power': 1})
+        link.wait_for(lambda m: ready(m.get('power_enabled')),
+                      'power_enabled == 1', 30)
+
+    # 3. The unit's own readiness signal. This is the step not to shortcut.
+    log('waiting for the unit to say it can stabilise (up to %ds)' % wait_seconds)
+    link.wait_for(lambda m: ready(m.get('stabilize_available')),
+                  'stabilize_available', wait_seconds)
+
+    # 4. Engage.
+    link.send({'stabilize': 1})
+
+    # 5. Confirm by watching the stream.
+    link.wait_for(lambda m: ready(m.get('stabilize_enabled')),
+                  'stabilize_enabled == 1', 30)
+
+    # 6. Only now go to full speed.
+    link.send({'flywheel_speed': 0})
+
+    log('spin-up complete: stabilising, heading to maximum speed')
+    log('final: %s' % link.describe())
+    return 0
+
+
+def cmd_off(link):
+    log('current: %s' % link.describe())
+
+    if ready(link.state.get('stabilize_enabled')):
+        link.send({'stabilize': 0})
+        link.wait_for(lambda m: not ready(m.get('stabilize_enabled')),
+                      'stabilize_enabled == 0', 30)
+    else:
+        log('not stabilising - skipping')
+
+    if ready(link.state.get('power_enabled')):
+        link.send({'power': 0})
+        log('powering down - the flywheel coasts for a long time, this is normal')
+    else:
+        log('already powered down')
+
+    return 0
+
+
+def cmd_status(link, as_json):
+    if as_json:
+        print(json.dumps(link.state, indent=2, sort_keys=True))
+        return 0
+
+    s = link.state
+    print('power              %s' % s.get('power_enabled'))
+    print('can stabilise      %s' % s.get('stabilize_available'))
+    print('stabilising        %s' % s.get('stabilize_enabled'))
+    print('flywheel           %s rpm  (min %s / max %s)'
+          % (s.get('flywheel_speed'), s.get('flywheel_min_speed'),
+             s.get('flywheel_max_speed')))
+    print('target             %s' % s.get('flywheel_crt_selected_speed'))
+    print('roll               %s deg' % s.get('boat_roll_angle'))
+    print('drive temp         %s' % s.get('drive_temperature'))
+    print('battery            %s V' % s.get('battery_voltage'))
+    if s.get('active_alarm_history'):
+        print('alarm history      %s entries' % s.get('active_alarm_history'))
+    print('run hours          %s' % s.get('run_hours'))
+    return 0
+
+
+# ------------------------------------------------------------------- detaching
+
+def _alive():
+    try:
+        with open(PID_PATH) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, 0)
+        return pid
+    except (OSError, ValueError):
+        return None
+
+
+def _detach(argv):
+    """Re-exec as a background run, writing to the log."""
+    running = _alive()
+    if running:
+        print('already running (pid %d) - `gyro log` to follow it' % running)
+        return 1
+
+    logfile = open(LOG_PATH, 'w')
+    proc = subprocess.Popen(
+        [sys.executable, os.path.abspath(__file__), '_run'] + argv,
+        stdout=logfile, stderr=subprocess.STDOUT,
+        stdin=subprocess.DEVNULL, start_new_session=True)
+    with open(PID_PATH, 'w') as f:
+        f.write('%d\n' % proc.pid)
+
+    print('started (pid %d)' % proc.pid)
+    print('a cold unit takes about 40 minutes.')
+    print('  gyro status   - where it has got to')
+    print('  gyro log      - follow the log')
+    return 0
+
+
+def _foreground(args, work):
+    """Run work() against a connected link, with consistent error handling."""
+    link = Link()
+    if not link.preflight():
+        return 1
+    try:
+        link.connect()
+    except Exception as e:
+        log('FATAL: %s' % e)
+        log('if every slot is in use, closing the dock tab frees two '
+            'immediately: a page holds 2, the plugin 1, this needs the 4th.')
+        return 1
+
+    try:
+        return work(link)
+    except Exception as e:
+        log('FAILED: %s' % e)
+        log('the unit has NOT been powered down - `gyro off` does that')
+        return 4
+    finally:
+        time.sleep(0.5)
+        link.close()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        prog='gyro',
+        description='SeaKeeper control: bring it up, shut it down, see what it '
+                    'is doing.')
+    sub = parser.add_subparsers(dest='command')
+
+    p_on = sub.add_parser('on', help='spin up, stabilise, then full speed')
+    p_on.add_argument('--wait', type=int, default=3600, metavar='SECONDS',
+                      help='how long to wait for the unit to be ready '
+                           '(default 3600); a cold unit needs ~40 minutes')
+    p_on.add_argument('--hold', action='store_true',
+                      help='stay attached and show progress')
+
+    sub.add_parser('off', help='stop stabilising, then power down')
+    sub.add_parser('log', help='follow the log of the most recent run')
+
+    p_status = sub.add_parser('status', help='what it is doing right now')
+    p_status.add_argument('--json', action='store_true',
+                          help='dump the whole status payload')
+
+    # internal: the detached worker
+    p_run = sub.add_parser('_run')
+    p_run.add_argument('--wait', type=int, default=3600)
+
+    args = parser.parse_args()
+
+    if args.command is None:
+        parser.print_help()
+        return 2
+
+    if args.command == '_run':
+        return _foreground(args, lambda link: cmd_on(link, args.wait))
+
+    if args.command == 'on':
+        if args.hold:
+            return _foreground(args, lambda link: cmd_on(link, args.wait))
+        return _detach(['--wait', str(args.wait)])
+
+    if args.command == 'off':
+        return _foreground(args, cmd_off)
+
+    if args.command == 'status':
+        return _foreground(args, lambda link: cmd_status(link, args.json))
+
+    if args.command == 'log':
+        try:
+            os.execvp('tail', ['tail', '-f', LOG_PATH])
+        except OSError:
+            print('no log yet at %s' % LOG_PATH)
+            return 1
+
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main())
