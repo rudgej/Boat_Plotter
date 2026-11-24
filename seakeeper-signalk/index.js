@@ -239,14 +239,30 @@ module.exports = function (app) {
     const s = latest.status || {};
 
     if (on(s.stabilize_enabled)) {
-      setSequence('already-stabilising');
+      // Already stabilising. Re-publishing stabilize is harmless - the unit
+      // ignores it - but the useful action if it is still on the low target is
+      // to ask for full speed. Returning early here used to leave a gyro that
+      // was stabilising at 7600 sitting at 7600.
+      if (s.flywheel_crt_selected_speed !== 0) {
+        send({ flywheel_speed: 0 });
+        setSequence('already-stabilising, full speed requested');
+      } else {
+        setSequence('already-stabilising');
+      }
       return;
     }
 
+    const rpm = typeof s.flywheel_speed === 'number' ? s.flywheel_speed : 0;
+    const minTarget =
+      typeof s.flywheel_min_speed === 'number' ? s.flywheel_min_speed : 7600;
+
     if (on(s.power_enabled)) {
-      // Already spinning. Commanding the low target now would pull it back down
-      // for no reason, so skip straight to waiting for readiness. This is the
-      // 8000 rpm case: there is nothing to ramp up from.
+      // Already spinning. Ask for the low target only if it is not already at or
+      // above it: commanding 7600 at 8000 would drop the speed for no reason.
+      // The unit copes either way, but there is nothing to gain from the dip.
+      if (rpm < minTarget) {
+        send({ flywheel_speed: 1 });
+      }
       setSequence('already-running, waiting to be ready');
     } else {
       send({ flywheel_speed: 1 });
