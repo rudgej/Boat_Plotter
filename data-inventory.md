@@ -215,9 +215,145 @@ low coolant level, water flow, water in fuel, charge indicator, preheat, high bo
 EGR, throttle sensor, emergency stop, warning levels 1 and 2, power reduction, maintenance,
 shutting down, sub/secondary throttle, neutral start protect, comm error, over-temperature.
 
+### 10.1 Engine alarms — the complete list
+
+**28 notification paths per engine**, 56 in total, from two different origins. Paths are
+`notifications.propulsion.port.*` and `notifications.propulsion.starboard.*`.
+
+**24 come from the gateway's Discrete Status bitfields** (`$source: n2k-can0.56`) — these are the
+engine's own warning lamps, transmitted in PGN 127489. `0x0000` = all clear, which is what the
+engines reported throughout the 2026-11-24 session:
+
+| Flag | Indicates |
+|---|---|
+| `checkEngine` | General ECU fault / "check engine" lamp |
+| `lowOilPressure` | Oil pressure below threshold |
+| `lowOilLevel` | Oil level low |
+| `lowFuelPressure` | Fuel supply pressure low |
+| `lowSystemVoltage` | Charging system voltage low |
+| `lowCoolantLevel` | Coolant level low |
+| `waterFlow` | Cooling water flow problem |
+| `waterInFuel` | Water in the fuel filter/separator |
+| `chargeIndicator` | Alternator/charging fault lamp |
+| `preheatIndicator` | Glow-plug/preheat active |
+| `highBoostPressure` | Turbo/supercharger over-boost |
+| `revLimitExceeded` | Engine exceeded its rev limit |
+| `eGRSystem` | EGR system fault |
+| `throttlePositionSensor` | Throttle position sensor fault |
+| `emergencyStopMode` | Emergency stop engaged |
+| `warningLevel1` | Manufacturer warning, level 1 |
+| `warningLevel2` | Manufacturer warning, level 2 |
+| `powerReduction` | Engine derating power |
+| `maintenanceNeeded` | Maintenance due |
+| `shuttingDown` | Engine in shutdown sequence |
+| `subOrSecondaryThrottle` | Secondary throttle active/faulty |
+| `neutralStartProtect` | Neutral start protection active |
+| `commError` | Communication error on the engine bus |
+| `overTemperature` | Engine over-temperature |
+
+The first 16 correspond to the standard **Discrete Status 1** warning-lamp set; the rest to
+**Discrete Status 2** (derate and protection flags). Note that canboat's PGN definition does
+*not* enumerate the individual bits, so exact bit positions are not documented here — only the
+resulting Signal K paths, which are what a dashboard consumes.
+
+**4 are Signal K's own threshold alerts** (`$source: self.notificationhandler`), computed from
+value ranges rather than reported by the engine:
+
+| Flag | Rule Signal K applies |
+|---|---|
+| `oilPressure` | 200 000 < value < 2 000 000 Pa |
+| `oilTemperature` | 273.15 < value < 374.05 K |
+| `temperature` | 273.15 < value < 359.05 K |
+| `boostPressure` | 0 < value < 500 000 Pa |
+
+These are the ones that produced the false low-oil-pressure warning while the engine was merely
+switched off — the gateway reported `0` Pa and Signal K had no way to know it meant "no data".
+
+Plus two non-engine notifications:
+
+| Path | State | Meaning |
+|---|---|---|
+| `notifications.environment.depth.belowTransducer` | `warn` | Depth below 2 m |
+| `notifications.n2kEngineFix.status` | `normal` | Breadcrumb from the local fix plugin |
+
 ---
 
-## 11. What Signal K transmits onto NMEA 2000
+## 11. SeaKeeper gyro — available over MQTT, not N2K
+
+There is **no standard NMEA 2000 PGN for a gyro stabiliser**, so a SeaKeeper cannot be read off
+the CAN bus in anything decodable. Its data comes over **MQTT**, bridged into Signal K at 1 Hz by
+the `seakeeper-signalk` plugin in this repo (`seakeeper-link.md` has the full protocol).
+
+**Current state: offline.** The plugin is installed and enabled, but `enp2s0` shows
+`NO-CARRIER` — the SeaKeeper Ethernet link is not plugged in, so no `seakeeper-signalk` source
+exists in the model.
+
+### 11.1 Every field in the status message
+
+Subscribe to `seakeeper/status/1` on `ws://192.168.0.2:9001/mqtt`. Complete payload, all 34
+fields:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `flywheel_speed` | number | **Actual rotor rpm**, live |
+| `flywheel_speed_percent` | number | 0–100, drives the speed ring |
+| `flywheel_min_speed` / `flywheel_max_speed` | number | 7600 / 9700 on this unit |
+| `flywheel_crt_selected_speed` | number | Selector: 0 = max, 1 = min |
+| `stabilize_available` | bool | Gates the Stabilise button — false until at speed |
+| `stabilize_enabled` | 0/1 | Stabilisation actually engaged |
+| `power_available` / `power_enabled` | 0/1 | Power control state |
+| `boat_roll_angle` | float | **Degrees** — the boat's roll, the number worth plotting |
+| `gyro_angle` | float | Degrees |
+| `roll_angle_flipped` | bool | Display inversion flag |
+| `battery_voltage` | float | V (12.4 V nominal here) |
+| `battery_displayed` / `battery_segments` | number | Battery gauge rendering |
+| `drive_current` | float | A |
+| `drive_temperature` | **string** | e.g. `"29.0° C"` — parse, do not treat as a number |
+| `enclosure_pressure` | **string** | |
+| `sea_hours` | number | Hours at sea (1311) |
+| `run_hours` | number | Total run hours (1434) |
+| `serial` | string | `"60055"` |
+| `model` | string | `"6"` |
+| `seakeeper_instance` | number | Instance id |
+| `gcm`, `imu`, `tcml`, `display`, `drive1`, `drive2` | string | Firmware/hardware versions |
+| `language` | number | |
+| `graph_is_dial_left` | 0/1 | Display orientation |
+| `progress_bar_available` | bool | |
+| `progress_bar_percentage` | number | |
+| `active_alarm_history` | number | Alarm history count |
+
+### 11.2 What the bridge publishes into Signal K
+
+| Signal K path | From | Units |
+|---|---|---|
+| `navigation.attitude.roll` | `boat_roll_angle` | **radians** (unit sends degrees) |
+| `propulsion.gyro.rpm` | `flywheel_speed` | rpm |
+| `propulsion.gyro.targetRpm` | `flywheel_crt_selected_speed` | rpm |
+| `propulsion.gyro.powerEnabled` | `power_enabled` | bool |
+| `propulsion.gyro.stabilizeEnabled` | `stabilize_enabled` | bool |
+| `propulsion.gyro.stabilizeAvailable` | `stabilize_available` | bool |
+| `notifications.seakeeper` | `alarming_seekepers` | normal / alarm |
+
+Fields **not** currently bridged but available: `sea_hours`, `run_hours`, `battery_voltage`,
+`drive_current`, `drive_temperature`, `enclosure_pressure`, `gyro_angle`.
+
+### 11.3 Commands (MQTT publish)
+
+To `seakeeper/request/1`, JSON payloads: `{"power":1}` / `{"power":0}`,
+`{"flywheel_speed":1}` (min) / `{"flywheel_speed":0}` (max — note the inversion),
+`{"stabilize":1}` / `{"stabilize":0}`.
+
+### 11.4 Getting roll onto the Garmin
+
+Signal K can publish **PGN 127257 Attitude** — a *standard* PGN — from
+`navigation.attitude.roll` via the `ATTITUDE` conversion in `sk-to-nmea2000`. That is the clean
+route to a roll display on a Garmin, and avoids reverse-engineering proprietary SeaKeeper frames.
+Not enabled at the time of writing.
+
+
+---
+
+## 12. What Signal K transmits onto NMEA 2000
 
 | PGN | Content | Rate |
 |---|---|---|
@@ -226,7 +362,7 @@ shutting down, sub/secondary throttle, neutral start protect, comm error, over-t
 
 ---
 
-## 12. Unit conversions — get these wrong and every gauge lies
+## 13. Unit conversions — get these wrong and every gauge lies
 
 | Quantity | Signal K stores | Convert |
 |---|---|---|
@@ -241,7 +377,7 @@ shutting down, sub/secondary throttle, neutral start protect, comm error, over-t
 
 ---
 
-## 13. Do not trust these
+## 14. Do not trust these
 
 | Item | Problem |
 |---|---|
@@ -256,7 +392,7 @@ shutting down, sub/secondary throttle, neutral start protect, comm error, over-t
 
 ---
 
-## 14. Not present at all
+## 15. Not present at all
 
 | Item | Why |
 |---|---|

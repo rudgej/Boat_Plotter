@@ -177,7 +177,7 @@ its own.
   values that must not be trusted, and what is missing entirely (AIS, autopilot, rudder angle).
   Start here when building a dashboard.
 - **`n2k-engine-fix/`** — local Signal K plugin written on 2026-11-24 to correct the
-  engine-data defects. See its notes in `data-inventory.md` §13.
+  engine-data defects. See its notes in `data-inventory.md` §14.
 - **`pi-dock/`** — the live plotter config: Signal K settings, KIP dashboards, dock launcher,
   BoatNetwork AP, Shelly automation, Bluetooth speaker pairing, watchdogs. Full docs in
   **`pi-dock/README.md`**.
