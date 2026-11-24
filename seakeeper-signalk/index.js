@@ -128,6 +128,13 @@ module.exports = function (app) {
       if (typeof s.flywheel_speed === 'number') {
         values.push({ path: 'propulsion.gyro.rpm', value: s.flywheel_speed });
       }
+      // The control path also carries a value, so a dashboard switch bound to
+      // it shows whether the gyro is running rather than sitting blank. Toggling
+      // it PUTs back to this same path.
+      values.push({
+        path: 'propulsion.gyro.control',
+        value: !!s.stabilize_enabled
+      });
     }
 
     if (a) {
@@ -337,6 +344,9 @@ module.exports = function (app) {
     }
   }
 
+  // Accept whatever a dashboard switch sends. KIP, for one, wraps values as
+  // {value: 1, units: ...} rather than sending a bare boolean, so guessing a
+  // single shape would make the switch silently do nothing.
   function readAction(value) {
     if (value && typeof value === 'object') {
       if (typeof value.state === 'string') {
@@ -345,12 +355,18 @@ module.exports = function (app) {
       if (typeof value.on === 'boolean') {
         return value.on ? 'on' : 'off';
       }
-      if (value.value && typeof value.value === 'object') {
+      if (value.value !== undefined) {
         return readAction(value.value);
       }
     }
     if (typeof value === 'string') {
       return value.toLowerCase();
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'on' : 'off';
+    }
+    if (typeof value === 'number') {
+      return value !== 0 ? 'on' : 'off';
     }
     return null;
   }
