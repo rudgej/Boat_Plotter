@@ -168,6 +168,10 @@ its own.
 - **`seakeeper-link.md`** — the SeaKeeper Ethernet link, web UI and MQTT interface, measured on
   the boat 2026-11-21. The unit answers on `192.168.0.2`, not the `172.16.102.1` that
   `MIGRATION.md` §18 and `seakeeper-esp/SETUP.md` still describe.
+- **`nmea2000-live-bus.md`** — the NMEA 2000 backbone measured on the boat 2026-11-24, the first
+  time the N100 saw the real bus rather than a simulator. Device inventory by source address, full
+  PGN table with rates, engine gateway data, what Signal K transmits back, and the known defects
+  (fuel pressure ×1000, not-available reported as 0, truncated `127497`).
 - **`pi-dock/`** — the live plotter config: Signal K settings, KIP dashboards, dock launcher,
   BoatNetwork AP, Shelly automation, Bluetooth speaker pairing, watchdogs. Full docs in
   **`pi-dock/README.md`**.
