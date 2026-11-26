@@ -112,7 +112,7 @@ HAT.
 | `can0-nmea2000` | — | Brings CAN up before Signal K starts |
 | `tailscaled` | — | Remote access |
 | `holding-tank-dump` | — | Auto sewage discharge (see Boat automations) |
-| `cockpit-light` | — | Dusk-to-23:00 cockpit lighting — **disabled 2026-11-23** |
+| `cockpit-light` | — | Cockpit lighting — **permanently suspended 2026-11-23** |
 | `bt-one-radio` | — | Keeps the internal Bluetooth radio pairable and the Wi-Fi dongle's Bluetooth off |
 | `set-timezone.timer` | — | GPS-derived timezone, every 10 min |
 
@@ -200,17 +200,17 @@ has an input — but the cockpit light is switched off by choice.
 | Unit | State |
 |---|---|
 | `holding-tank-dump.service` | Enabled. Acts only on a readable switch, so it fails safe. |
-| `cockpit-light.service` | **Disabled 2026-11-23** — stopped and not enabled. Not wanted at present, and it filled the journal with Signal K login retries at every boot. Code is unchanged: `sudo systemctl enable --now cockpit-light` restores it exactly as described below. |
+| `cockpit-light.service` | **Permanently suspended 2026-11-23** — stopped and not enabled. It is not wanted and should never fire again; the code stays installed as a record, but reactivating it is not a supported state. **It must be masked**, because it can still be started indirectly — see the pending actions below. |
 | `set-timezone.service` + `.timer` | Runs every 10 minutes. It had nothing to act on until the real bus was connected; with the Garmin fix it should now set the zone. Confirm with `timedatectl` — the box was on `Europe/London` set by hand. |
 
 The two Shelly relays are `shellyplus1-e465b842fb34` @ `.151` (holding tank) and
 `shellyplus1pm-441793d69434` @ `.142` (cockpit lighting), documented in `pi-dock/README.md` §7. After
 a Shelly returns from a reboot, **restart Signal K** — the plugin does not reconnect on its own.
 
-> **Latent surprise worth knowing:** `set-timezone.py` restarts `cockpit-light` whenever it changes the
-> zone, and `systemctl restart` *starts* a stopped unit. So a timezone change will bring the disabled
-> cockpit light back up on its own. If it stays unwanted, the script needs its restart line made
-> conditional or removed.
+> **It can still start itself, which is why "permanently suspended" is not yet true.**
+> `set-timezone.py` restarts `cockpit-light` whenever the zone changes, and `systemctl restart`
+> *starts* a stopped unit. So the first timezone boundary the boat crosses will bring it back up.
+> Masking the unit and removing that restart line are the pending actions below.
 
 ## Repository layout
 
@@ -295,6 +295,31 @@ everything else is a sensor, a display or a bridge that talks to it.
 
 The five ESP32 projects share one library version; they are pinned to the same
 `esp-signalk-sender` tag so that "the network is down" means the same thing on every device.
+
+## Pending actions when next on the box
+
+Small jobs, recorded here because the box is not always reachable. Nothing here is urgent.
+
+1. **Make the cockpit light impossible to start.** It is permanently suspended, but it is still an
+   installed unit and `set-timezone.py` restarts it on every timezone change — so it can come back by
+   itself at the first border the boat crosses. Two changes, both wanted:
+
+   ```sh
+   sudo systemctl mask cockpit-light        # a masked unit cannot be started, even by another unit
+   ```
+
+   and remove the `cockpit-light` restart from the end of `/usr/local/bin/set-timezone.py` (mirror
+   the change in this repo). Doing both means the intent lives in the script and in unit state,
+   rather than depending on nobody ever typing `enable --now`. Until the line is removed, a masked
+   unit makes that restart fail and log an error — harmless, but noisy.
+
+   Note that `pi-dock/README.md` §8 and `MIGRATION.md` §408 still tell a rebuild to *enable*
+   `cockpit-light`. Those are bring-up instructions, not status, and should be corrected so a future
+   rebuild does not turn it back on.
+
+2. **Confirm `set-timezone` now actually works.** It had nothing to act on until the Garmin receiver
+   came online on the N2K bus; with a 10 Hz fix it should set the zone. Check `timedatectl` after a
+   timer run, and `journalctl -u set-timezone` for the zone it resolved.
 
 ## Known gaps
 
