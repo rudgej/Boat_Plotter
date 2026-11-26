@@ -4,8 +4,9 @@ Configuration, documentation and tooling for the boat's navigation box: a fanles
 Debian 13, serving Signal K, AvNav, KIP dashboards, an offline manuals library and an engine trend
 monitor. This replaces the Raspberry Pi 5 plotter build.
 
-**State: live and in use.** Everything below was verified on the box on 2026-11-19 unless marked
-otherwise.
+**State: live and in use.** Facts are dated where it matters. Most recent verifications: the NMEA 2000
+bus on 2026-11-24, the SeaKeeper link on 2026-11-21/22, the RS485 pinout on 2026-11-21, and the
+cockpit-light suspension on 2026-11-23.
 
 ## Access
 
@@ -111,7 +112,7 @@ HAT.
 | `can0-nmea2000` | — | Brings CAN up before Signal K starts |
 | `tailscaled` | — | Remote access |
 | `holding-tank-dump` | — | Auto sewage discharge (see Boat automations) |
-| `cockpit-light` | — | Dusk-to-23:00 cockpit lighting |
+| `cockpit-light` | — | Dusk-to-23:00 cockpit lighting — **disabled 2026-11-23** |
 | `bt-one-radio` | — | Keeps the internal Bluetooth radio pairable and the Wi-Fi dongle's Bluetooth off |
 | `set-timezone.timer` | — | GPS-derived timezone, every 10 min |
 
@@ -192,15 +193,24 @@ Three custom Python scripts in `/usr/local/bin`, each run by systemd:
 | `cockpit-light.service` | Light on at computed sunset (from GPS position), off at 23:00 local. If you switch it off manually that evening, it stays off until the next dusk. |
 | `set-timezone.service` + `.timer` | Sets the system timezone from GPS position with `timezonefinder` (offline, no API key), then restarts `cockpit-light` so sunset is recomputed. |
 
-**State as of 2026-11-20: all three run, none can act.** Both Shelly relays are absent from
-BoatNetwork, so the plugin publishes no `electrical.switches` paths at all and the two switch
-scripts read 404 (one per second, which also fills Signal K's access log). Independently,
-`set-timezone` has no position to work from: no GPS provider is configured, and
-`navigation.position` has metadata but has never carried a value. The timezone is set by hand.
+**They are not all in the same state.** The real GNSS fix arrived with the live N2K bus (a Garmin
+receiver at 10 Hz, `navigation.position` around 43.586 / 7.123), so anything position-dependent now
+has an input — but the cockpit light is switched off by choice.
 
-The Shellies are `shellyplus1-e465b842fb34` @ `.151` (sewage) and `shellyplus1pm-441793d69434` @
-`.142` (cockpit lights). When they return, **restart Signal K** — the plugin does not reconnect on
-its own.
+| Unit | State |
+|---|---|
+| `holding-tank-dump.service` | Enabled. Acts only on a readable switch, so it fails safe. |
+| `cockpit-light.service` | **Disabled 2026-11-23** — stopped and not enabled. Not wanted at present, and it filled the journal with Signal K login retries at every boot. Code is unchanged: `sudo systemctl enable --now cockpit-light` restores it exactly as described below. |
+| `set-timezone.service` + `.timer` | Runs every 10 minutes. It had nothing to act on until the real bus was connected; with the Garmin fix it should now set the zone. Confirm with `timedatectl` — the box was on `Europe/London` set by hand. |
+
+The two Shelly relays are `shellyplus1-e465b842fb34` @ `.151` (holding tank) and
+`shellyplus1pm-441793d69434` @ `.142` (cockpit lighting), documented in `pi-dock/README.md` §7. After
+a Shelly returns from a reboot, **restart Signal K** — the plugin does not reconnect on its own.
+
+> **Latent surprise worth knowing:** `set-timezone.py` restarts `cockpit-light` whenever it changes the
+> zone, and `systemctl restart` *starts* a stopped unit. So a timezone change will bring the disabled
+> cockpit light back up on its own. If it stays unwanted, the script needs its restart line made
+> conditional or removed.
 
 ## Repository layout
 
@@ -266,6 +276,25 @@ its own.
 - **`pi-dock/pi-config/home/pi/.signalk/settings.json`** — Signal K's own config (data connections
   and security). Without this a restored Signal K has no data connections at all.
 - **`shelly-migration-baseline.md`** — Shelly switch migration notes.
+
+## Child repositories
+
+This is one of eight repositories that make up the boat's instrumentation. The box is the hub;
+everything else is a sensor, a display or a bridge that talks to it.
+
+| Repository | What it is |
+|---|---|
+| **Boat_Plotter** (this one) | The N100 itself — Signal K, AvNav, KIP, manuals, engine trends, and the tooling and documentation around them. |
+| [**esp-signalk-sender**](https://github.com/rudgej/esp-signalk-sender) | Shared ESP32 helpers: Signal K probe, network supervisor with failover, UDP NMEA 0183 sender, and OTA push (`tools/ota_push.sh`). The sensors and the display all build on it. |
+| [**esp-seakeeper-relay**](https://github.com/rudgej/esp-seakeeper-relay) | Standalone ESP-IDF firmware for the WT32-ETH01 that puts the SeaKeeper on BoatNetwork. Replaces the off-the-shelf router firmware; not a library. Protocol in `docs/seakeeper-protocol.md`. |
+| [**Wind-Sensor**](https://github.com/rudgej/Wind-Sensor) | WINDSEND — Waveshare ESP32-S3-RS485-CAN reading a MINI ultrasonic wind station over RS485 Modbus RTU, forwarding wind to Signal K over UDP at 2 Hz. |
+| [**water-level-sensor**](https://github.com/rudgej/water-level-sensor) | WATERLEVEL — ESP32-C3 reading a 0–3.3 V analogue tank sender with a piecewise on-boat calibration, plus a pump-dip hold so a shower doesn't read as an empty tank. |
+| [**Generator-Temp-Sender**](https://github.com/rudgej/Generator-Temp-Sender) | GENTEMP — ESP32-S3 reading three DS18B20 probes on one 1-Wire bus and forwarding them to Signal K. |
+| [**CYD-Display**](https://github.com/rudgej/CYD-Display) | Single-screen instrument repeater for the ESP32-2432S028 "Cheap Yellow Display", reading Signal K over WebSocket. |
+| [**seakeeper-bridge**](https://github.com/rudgej/seakeeper-bridge) | **Superseded** by `esp-seakeeper-relay`. Kept as background on the WT32-ETH01 approach — do not build from it. |
+
+The five ESP32 projects share one library version; they are pinned to the same
+`esp-signalk-sender` tag so that "the network is down" means the same thing on every device.
 
 ## Known gaps
 
